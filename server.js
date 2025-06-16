@@ -3,9 +3,10 @@ const { Client, LocalAuth } = require('whatsapp-web.js');
 const cors = require('cors');
 const fs = require('fs').promises;
 const path = require('path');
+const { v4: uuidv4 } = require('uuid');
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 8000;
 
 app.use(cors());
 app.use(express.json());
@@ -13,6 +14,7 @@ app.use(express.static('public'));
 
 // Store active clients
 const activeClients = new Map();
+let browserInstances = new Map(); // Track browser instances
 
 // Graceful shutdown handling
 const gracefulShutdown = async (signal) => {
@@ -31,6 +33,21 @@ const gracefulShutdown = async (signal) => {
     }
     
     activeClients.clear();
+    browserInstances.clear();
+    
+    // Clean up chrome user data directories
+    try {
+        const tmpDir = path.join(__dirname, 'tmp');
+        const entries = await fs.readdir(tmpDir);
+        for (const entry of entries) {
+            if (entry.startsWith('chrome-user-data-')) {
+                await fs.rm(path.join(tmpDir, entry), { recursive: true, force: true });
+            }
+        }
+    } catch (error) {
+        console.error('Error cleaning up chrome directories:', error);
+    }
+    
     process.exit(0);
 };
 
@@ -50,8 +67,40 @@ const ensureSessionDir = async () => {
 // Initialize session directory
 ensureSessionDir();
 
-// Improved Chrome args for better stability
-const getChromeArgs = () => {
+// Clean up old chrome user data directories
+const cleanupOldChromeData = async () => {
+    try {
+        const tmpDir = path.join(__dirname, 'tmp');
+        const entries = await fs.readdir(tmpDir);
+        
+        for (const entry of entries) {
+            if (entry.startsWith('chrome-user-data-')) {
+                const dirPath = path.join(tmpDir, entry);
+                try {
+                    // Remove SingletonLock files that might be stuck
+                    const lockFiles = ['SingletonLock', 'SingletonCookie', 'SingletonSocket'];
+                    for (const lockFile of lockFiles) {
+                        try {
+                            await fs.unlink(path.join(dirPath, lockFile));
+                        } catch (e) {
+                            // Ignore if file doesn't exist
+                        }
+                    }
+                } catch (error) {
+                    console.error(`Error cleaning lock files in ${dirPath}:`, error);
+                }
+            }
+        }
+    } catch (error) {
+        console.error('Error during cleanup:', error);
+    }
+};
+
+// Improved Chrome args for better stability and unique instances
+const getChromeArgs = (sessionId) => {
+    const userDataDir = path.join(__dirname, 'tmp', `chrome-user-data-${sessionId}`);
+    const cacheDir = path.join(__dirname, 'tmp', `chrome-cache-${sessionId}`);
+    
     return [
         '--no-sandbox',
         '--disable-setuid-sandbox',
@@ -87,29 +136,30 @@ const getChromeArgs = () => {
         '--disable-component-update',
         '--disable-domain-reliability',
         '--disable-blink-features=AutomationControlled',
-        '--disable-features=VizDisplayCompositor',
         '--window-size=1366,768',
         '--start-maximized',
         '--disable-infobars',
         '--disable-notifications',
         '--no-crash-upload',
         '--disable-crash-reporter',
-        '--disable-dev-shm-usage',
         '--shm-size=3gb',
-        `--user-data-dir=${path.join(__dirname, 'tmp', 'chrome-user-data')}`,
-        `--data-path=${path.join(__dirname, 'tmp', 'chrome-data')}`,
-        `--disk-cache-dir=${path.join(__dirname, 'tmp', 'chrome-cache')}`,
-        '--remote-debugging-port=0' // Let Chrome choose an available port
+        '--single-process', // Force single process mode
+        '--no-first-run',
+        '--disable-gpu-sandbox',
+        '--disable-software-rasterizer',
+        '--disable-dev-tools',
+        `--user-data-dir=${userDataDir}`,
+        `--disk-cache-dir=${cacheDir}`,
+        `--remote-debugging-port=0` // Let Chrome choose an available port
     ];
 };
 
-// Create tmp directories
-const ensureTmpDirs = async () => {
+// Create unique tmp directories for each session
+const ensureUniqueTmpDirs = async (sessionId) => {
     const dirs = [
         path.join(__dirname, 'tmp'),
-        path.join(__dirname, 'tmp', 'chrome-user-data'),
-        path.join(__dirname, 'tmp', 'chrome-data'),
-        path.join(__dirname, 'tmp', 'chrome-cache')
+        path.join(__dirname, 'tmp', `chrome-user-data-${sessionId}`),
+        path.join(__dirname, 'tmp', `chrome-cache-${sessionId}`)
     ];
     
     for (const dir of dirs) {
@@ -121,9 +171,40 @@ const ensureTmpDirs = async () => {
     }
 };
 
-ensureTmpDirs();
+// Cleanup function for a specific session
+const cleanupSession = async (sessionId, phoneNumber) => {
+    try {
+        // Remove from active clients
+        activeClients.delete(phoneNumber);
+        browserInstances.delete(sessionId);
+        
+        // Clean up session-specific directories
+        const userDataDir = path.join(__dirname, 'tmp', `chrome-user-data-${sessionId}`);
+        const cacheDir = path.join(__dirname, 'tmp', `chrome-cache-${sessionId}`);
+        
+        // Remove directories with a delay to ensure processes are closed
+        setTimeout(async () => {
+            try {
+                await fs.rm(userDataDir, { recursive: true, force: true });
+                await fs.rm(cacheDir, { recursive: true, force: true });
+                console.log(`Cleaned up directories for session ${sessionId}`);
+            } catch (error) {
+                console.error(`Error cleaning up session ${sessionId}:`, error);
+            }
+        }, 5000);
+        
+    } catch (error) {
+        console.error(`Error in cleanup for session ${sessionId}:`, error);
+    }
+};
+
+// Initial cleanup
+cleanupOldChromeData();
 
 app.post('/api/generate-pair-code', async (req, res) => {
+    let sessionId = null;
+    let client = null;
+    
     try {
         const { phoneNumber } = req.body;
         
@@ -133,6 +214,7 @@ app.post('/api/generate-pair-code', async (req, res) => {
 
         // Clean phone number (remove spaces, dashes, etc.)
         const cleanPhoneNumber = phoneNumber.replace(/\D/g, '');
+        sessionId = uuidv4(); // Generate unique session ID
         
         if (activeClients.has(cleanPhoneNumber)) {
             const existingClient = activeClients.get(cleanPhoneNumber);
@@ -144,35 +226,41 @@ app.post('/api/generate-pair-code', async (req, res) => {
                     status: 'already_connected'
                 });
             } else {
-                // Clean up existing client
+                // Clean up existing client properly
                 try {
-                    await existingClient.client.destroy();
+                    if (existingClient.client && typeof existingClient.client.destroy === 'function') {
+                        await existingClient.client.destroy();
+                    }
+                    await cleanupSession(existingClient.sessionId, cleanPhoneNumber);
                 } catch (error) {
                     console.error('Error destroying existing client:', error);
                 }
-                activeClients.delete(cleanPhoneNumber);
             }
         }
 
-        console.log(`Generating pair code for: ${cleanPhoneNumber}`);
+        console.log(`Generating pair code for: ${cleanPhoneNumber} with session: ${sessionId}`);
 
-        const client = new Client({
+        // Ensure unique directories for this session
+        await ensureUniqueTmpDirs(sessionId);
+
+        client = new Client({
             authStrategy: new LocalAuth({ 
                 clientId: cleanPhoneNumber,
                 dataPath: path.join(__dirname, '.wwebjs_auth')
             }),
             puppeteer: {
                 headless: true,
-                args: getChromeArgs(),
+                args: getChromeArgs(sessionId),
                 executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/chromium-browser',
-                timeout: 120000, // Increased timeout
+                timeout: 120000,
                 protocolTimeout: 120000,
                 handleSIGINT: false,
                 handleSIGTERM: false,
                 handleSIGHUP: false,
                 devtools: false,
                 ignoreDefaultArgs: ['--enable-automation'],
-                defaultViewport: null
+                defaultViewport: null,
+                ignoreHTTPSErrors: true
             },
             webVersionCache: {
                 type: 'remote',
@@ -200,6 +288,8 @@ app.post('/api/generate-pair-code', async (req, res) => {
                 responseSent = true;
                 if (timeoutId) clearTimeout(timeoutId);
                 res.status(500).json(error);
+                // Clean up on error
+                setTimeout(() => cleanupSession(sessionId, cleanPhoneNumber), 1000);
             }
         };
 
@@ -213,6 +303,7 @@ app.post('/api/generate-pair-code', async (req, res) => {
                     success: true, 
                     pairCode,
                     phoneNumber: cleanPhoneNumber,
+                    sessionId: sessionId,
                     message: 'Enter this code in your WhatsApp app: Settings > Linked Devices > Link a Device > Link with phone number instead'
                 });
             }
@@ -226,6 +317,7 @@ app.post('/api/generate-pair-code', async (req, res) => {
                     success: true,
                     qr,
                     phoneNumber: cleanPhoneNumber,
+                    sessionId: sessionId,
                     message: 'QR code generated as fallback - scan with WhatsApp'
                 });
             }
@@ -256,7 +348,7 @@ app.post('/api/generate-pair-code', async (req, res) => {
                     `🎉 *WhatsApp Bot Connected Successfully!*\n\n` +
                     `📱 Phone: ${cleanPhoneNumber}\n` +
                     `⏰ Connected at: ${new Date().toLocaleString()}\n` +
-                    `🔑 Session ID: ${cleanPhoneNumber}\n\n` +
+                    `🔑 Session ID: ${sessionId}\n\n` +
                     `Your bot is now active and ready to receive messages!`
                 );
             } catch (error) {
@@ -267,7 +359,6 @@ app.post('/api/generate-pair-code', async (req, res) => {
         // Handle authentication failure
         client.on('auth_failure', (msg) => {
             console.error(`Authentication failed for ${cleanPhoneNumber}:`, msg);
-            activeClients.delete(cleanPhoneNumber);
             
             if (!responseSent) {
                 sendErrorResponse({ 
@@ -284,6 +375,8 @@ app.post('/api/generate-pair-code', async (req, res) => {
             if (activeClients.has(cleanPhoneNumber)) {
                 activeClients.get(cleanPhoneNumber).isConnected = false;
             }
+            // Clean up session after disconnection
+            setTimeout(() => cleanupSession(sessionId, cleanPhoneNumber), 2000);
         });
 
         // Handle errors with better error handling
@@ -309,7 +402,7 @@ app.post('/api/generate-pair-code', async (req, res) => {
                 if (message.body.toLowerCase() === 'ping') {
                     await message.reply('pong! 🏓');
                 } else if (message.body.toLowerCase() === 'status') {
-                    await message.reply(`Bot is online! 🟢\nConnected as: ${cleanPhoneNumber}`);
+                    await message.reply(`Bot is online! 🟢\nConnected as: ${cleanPhoneNumber}\nSession: ${sessionId}`);
                 } else if (message.body.toLowerCase() === 'help') {
                     await message.reply(
                         `🤖 *Bot Commands:*\n\n` +
@@ -323,26 +416,30 @@ app.post('/api/generate-pair-code', async (req, res) => {
             }
         });
 
-        // Store client
+        // Store client with session info
         activeClients.set(cleanPhoneNumber, {
             client,
             phoneNumber: cleanPhoneNumber,
+            sessionId: sessionId,
             createdAt: new Date(),
             isConnected: false
+        });
+
+        browserInstances.set(sessionId, {
+            phoneNumber: cleanPhoneNumber,
+            createdAt: new Date()
         });
 
         // Set timeout for the entire process
         timeoutId = setTimeout(() => {
             if (!responseSent) {
                 console.log(`Timeout waiting for pair code for ${cleanPhoneNumber}`);
-                activeClients.delete(cleanPhoneNumber);
-                client.destroy().catch(console.error);
                 sendErrorResponse({ 
                     error: 'Timeout waiting for pair code. Please try again.',
                     phoneNumber: cleanPhoneNumber
                 });
             }
-        }, 120000); // Increased timeout to 2 minutes
+        }, 120000); // 2 minutes timeout
 
         try {
             // Initialize client with retry logic
@@ -351,7 +448,6 @@ app.post('/api/generate-pair-code', async (req, res) => {
         } catch (error) {
             if (timeoutId) clearTimeout(timeoutId);
             console.error(`Error initializing client for ${cleanPhoneNumber}:`, error);
-            activeClients.delete(cleanPhoneNumber);
             
             if (!responseSent) {
                 sendErrorResponse({ 
@@ -371,6 +467,10 @@ app.post('/api/generate-pair-code', async (req, res) => {
                 details: error.message 
             });
         }
+        // Clean up on error
+        if (sessionId) {
+            setTimeout(() => cleanupSession(sessionId, req.body.phoneNumber?.replace(/\D/g, '')), 1000);
+        }
     }
 });
 
@@ -388,6 +488,7 @@ app.get('/api/status/:phoneNumber', (req, res) => {
     res.json({
         connected: clientData.isConnected,
         phoneNumber: cleanPhoneNumber,
+        sessionId: clientData.sessionId,
         createdAt: clientData.createdAt
     });
 });
@@ -404,8 +505,13 @@ app.delete('/api/disconnect/:phoneNumber', async (req, res) => {
             return res.status(404).json({ error: 'Client not found' });
         }
 
-        await clientData.client.destroy();
-        activeClients.delete(cleanPhoneNumber);
+        // Properly destroy client
+        if (clientData.client && typeof clientData.client.destroy === 'function') {
+            await clientData.client.destroy();
+        }
+        
+        // Clean up session
+        await cleanupSession(clientData.sessionId, cleanPhoneNumber);
         
         res.json({ success: true, message: 'Client disconnected successfully' });
     } catch (error) {
@@ -419,6 +525,7 @@ app.get('/api/clients', (req, res) => {
     const clients = Array.from(activeClients.entries()).map(([phoneNumber, data]) => ({
         phoneNumber,
         connected: data.isConnected,
+        sessionId: data.sessionId,
         createdAt: data.createdAt
     }));
     
@@ -434,7 +541,8 @@ app.get('/health', (req, res) => {
     res.json({ 
         status: 'healthy', 
         timestamp: new Date().toISOString(),
-        activeClients: activeClients.size
+        activeClients: activeClients.size,
+        browserInstances: browserInstances.size
     });
 });
 
