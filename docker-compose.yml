@@ -4,23 +4,36 @@ services:
   whatsapp-bot:
     build: .
     ports:
-      - "3000:3000"
+      - "8000:3000"  # Map external 8000 to internal 3000
     volumes:
       # Persist WhatsApp sessions
       - ./sessions:/usr/src/app/.wwebjs_auth
       - ./logs:/usr/src/app/logs
+      # Add shared memory for Chrome
+      - /dev/shm:/dev/shm
     environment:
       - NODE_ENV=production
       - PORT=3000
+      # Chrome/Puppeteer environment variables
+      - PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
+      - PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium-browser
+      - CHROME_BIN=/usr/bin/chromium-browser
+      - DISPLAY=:99
     restart: unless-stopped
     networks:
       - whatsapp-network
+    # Add more resources for Chrome
+    shm_size: 2gb
+    security_opt:
+      - seccomp:unconfined
+    cap_add:
+      - SYS_ADMIN
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/api/clients"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 40s
+      start_period: 60s  # Increased start period
 
 networks:
   whatsapp-network:
