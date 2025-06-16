@@ -15,14 +15,16 @@ app.use(express.static('public'));
 const activeClients = new Map();
 
 // Graceful shutdown handling
-process.on('SIGTERM', async () => {
-    console.log('Received SIGTERM, shutting down gracefully...');
+const gracefulShutdown = async (signal) => {
+    console.log(`Received ${signal}, shutting down gracefully...`);
     
     // Disconnect all clients
     for (const [phoneNumber, clientData] of activeClients) {
         try {
             console.log(`Disconnecting client: ${phoneNumber}`);
-            await clientData.client.destroy();
+            if (clientData.client && typeof clientData.client.destroy === 'function') {
+                await clientData.client.destroy();
+            }
         } catch (error) {
             console.error(`Error disconnecting client ${phoneNumber}:`, error);
         }
@@ -30,24 +32,10 @@ process.on('SIGTERM', async () => {
     
     activeClients.clear();
     process.exit(0);
-});
+};
 
-process.on('SIGINT', async () => {
-    console.log('Received SIGINT, shutting down gracefully...');
-    
-    // Disconnect all clients
-    for (const [phoneNumber, clientData] of activeClients) {
-        try {
-            console.log(`Disconnecting client: ${phoneNumber}`);
-            await clientData.client.destroy();
-        } catch (error) {
-            console.error(`Error disconnecting client ${phoneNumber}:`, error);
-        }
-    }
-    
-    activeClients.clear();
-    process.exit(0);
-});
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 
 // Ensure session directory exists
 const ensureSessionDir = async () => {
@@ -61,6 +49,79 @@ const ensureSessionDir = async () => {
 
 // Initialize session directory
 ensureSessionDir();
+
+// Improved Chrome args for better stability
+const getChromeArgs = () => {
+    return [
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage',
+        '--disable-accelerated-2d-canvas',
+        '--no-first-run',
+        '--no-zygote',
+        '--disable-gpu',
+        '--disable-web-security',
+        '--disable-features=VizDisplayCompositor,TranslateUI',
+        '--disable-background-timer-throttling',
+        '--disable-backgrounding-occluded-windows',
+        '--disable-renderer-backgrounding',
+        '--disable-field-trial-config',
+        '--disable-ipc-flooding-protection',
+        '--disable-extensions',
+        '--disable-plugins',
+        '--disable-default-apps',
+        '--disable-component-extensions-with-background-pages',
+        '--disable-background-networking',
+        '--disable-sync',
+        '--disable-translate',
+        '--hide-scrollbars',
+        '--metrics-recording-only',
+        '--mute-audio',
+        '--no-default-browser-check',
+        '--no-pings',
+        '--password-store=basic',
+        '--use-mock-keychain',
+        '--disable-hang-monitor',
+        '--disable-prompt-on-repost',
+        '--disable-client-side-phishing-detection',
+        '--disable-component-update',
+        '--disable-domain-reliability',
+        '--disable-blink-features=AutomationControlled',
+        '--disable-features=VizDisplayCompositor',
+        '--window-size=1366,768',
+        '--start-maximized',
+        '--disable-infobars',
+        '--disable-notifications',
+        '--no-crash-upload',
+        '--disable-crash-reporter',
+        '--disable-dev-shm-usage',
+        '--shm-size=3gb',
+        `--user-data-dir=${path.join(__dirname, 'tmp', 'chrome-user-data')}`,
+        `--data-path=${path.join(__dirname, 'tmp', 'chrome-data')}`,
+        `--disk-cache-dir=${path.join(__dirname, 'tmp', 'chrome-cache')}`,
+        '--remote-debugging-port=0' // Let Chrome choose an available port
+    ];
+};
+
+// Create tmp directories
+const ensureTmpDirs = async () => {
+    const dirs = [
+        path.join(__dirname, 'tmp'),
+        path.join(__dirname, 'tmp', 'chrome-user-data'),
+        path.join(__dirname, 'tmp', 'chrome-data'),
+        path.join(__dirname, 'tmp', 'chrome-cache')
+    ];
+    
+    for (const dir of dirs) {
+        try {
+            await fs.access(dir);
+        } catch {
+            await fs.mkdir(dir, { recursive: true });
+        }
+    }
+};
+
+ensureTmpDirs();
 
 app.post('/api/generate-pair-code', async (req, res) => {
     try {
@@ -82,6 +143,14 @@ app.post('/api/generate-pair-code', async (req, res) => {
                     phoneNumber: cleanPhoneNumber,
                     status: 'already_connected'
                 });
+            } else {
+                // Clean up existing client
+                try {
+                    await existingClient.client.destroy();
+                } catch (error) {
+                    console.error('Error destroying existing client:', error);
+                }
+                activeClients.delete(cleanPhoneNumber);
             }
         }
 
@@ -94,64 +163,34 @@ app.post('/api/generate-pair-code', async (req, res) => {
             }),
             puppeteer: {
                 headless: true,
-                args: [
-                    '--no-sandbox',
-                    '--disable-setuid-sandbox',
-                    '--disable-dev-shm-usage',
-                    '--disable-accelerated-2d-canvas',
-                    '--no-first-run',
-                    '--no-zygote',
-                    '--single-process',
-                    '--disable-gpu',
-                    '--disable-web-security',
-                    '--disable-features=VizDisplayCompositor',
-                    '--disable-background-timer-throttling',
-                    '--disable-backgrounding-occluded-windows',
-                    '--disable-renderer-backgrounding',
-                    '--disable-field-trial-config',
-                    '--disable-ipc-flooding-protection',
-                    '--disable-extensions',
-                    '--disable-plugins',
-                    '--disable-default-apps',
-                    '--disable-component-extensions-with-background-pages',
-                    '--disable-background-networking',
-                    '--disable-sync',
-                    '--disable-translate',
-                    '--hide-scrollbars',
-                    '--metrics-recording-only',
-                    '--mute-audio',
-                    '--no-default-browser-check',
-                    '--no-pings',
-                    '--password-store=basic',
-                    '--use-mock-keychain',
-                    '--force-fieldtrials=*BackgroundTracing/default/',
-                    '--disable-hang-monitor',
-                    '--disable-prompt-on-repost',
-                    '--disable-client-side-phishing-detection',
-                    '--disable-component-update',
-                    '--disable-domain-reliability',
-                    '--user-data-dir=/tmp/chrome-user-data',
-                    '--data-path=/tmp/chrome-data',
-                    '--homedir=/tmp',
-                    '--disk-cache-dir=/tmp/chrome-cache'
-                ],
+                args: getChromeArgs(),
                 executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/chromium-browser',
-                timeout: 60000,
-                protocolTimeout: 60000
+                timeout: 120000, // Increased timeout
+                protocolTimeout: 120000,
+                handleSIGINT: false,
+                handleSIGTERM: false,
+                handleSIGHUP: false,
+                devtools: false,
+                ignoreDefaultArgs: ['--enable-automation'],
+                defaultViewport: null
             },
             webVersionCache: {
                 type: 'remote',
                 remotePath: 'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/2.2412.54.html',
-            }
+            },
+            takeoverOnConflict: true,
+            takeoverTimeoutMs: 60000
         });
 
         let pairCode = null;
         let isConnected = false;
         let responseSent = false;
+        let timeoutId = null;
 
         const sendResponse = (data) => {
             if (!responseSent) {
                 responseSent = true;
+                if (timeoutId) clearTimeout(timeoutId);
                 res.json(data);
             }
         };
@@ -159,6 +198,7 @@ app.post('/api/generate-pair-code', async (req, res) => {
         const sendErrorResponse = (error) => {
             if (!responseSent) {
                 responseSent = true;
+                if (timeoutId) clearTimeout(timeoutId);
                 res.status(500).json(error);
             }
         };
@@ -181,6 +221,14 @@ app.post('/api/generate-pair-code', async (req, res) => {
         // Handle QR code (fallback)
         client.on('qr', (qr) => {
             console.log(`QR code generated for ${cleanPhoneNumber} (fallback)`);
+            if (!pairCode && !responseSent) {
+                sendResponse({
+                    success: true,
+                    qr,
+                    phoneNumber: cleanPhoneNumber,
+                    message: 'QR code generated as fallback - scan with WhatsApp'
+                });
+            }
         });
 
         // Handle authentication
@@ -199,6 +247,10 @@ app.post('/api/generate-pair-code', async (req, res) => {
             }
             
             try {
+                // Get client info
+                const clientInfo = client.info;
+                console.log(`Connected as: ${clientInfo.wid.user}@${clientInfo.wid.server}`);
+                
                 // Send connection info to user
                 await client.sendMessage(cleanPhoneNumber + '@c.us', 
                     `🎉 *WhatsApp Bot Connected Successfully!*\n\n` +
@@ -229,14 +281,17 @@ app.post('/api/generate-pair-code', async (req, res) => {
         // Handle disconnection
         client.on('disconnected', (reason) => {
             console.log(`Client ${cleanPhoneNumber} disconnected:`, reason);
-            activeClients.delete(cleanPhoneNumber);
+            if (activeClients.has(cleanPhoneNumber)) {
+                activeClients.get(cleanPhoneNumber).isConnected = false;
+            }
         });
 
-        // Handle errors
+        // Handle errors with better error handling
         client.on('error', (error) => {
             console.error(`Client ${cleanPhoneNumber} error:`, error);
             
-            if (!responseSent) {
+            // Don't send error response for minor errors after successful connection
+            if (!responseSent && !isConnected) {
                 sendErrorResponse({ 
                     error: 'Client initialization error', 
                     details: error.message,
@@ -277,23 +332,24 @@ app.post('/api/generate-pair-code', async (req, res) => {
         });
 
         // Set timeout for the entire process
-        const timeout = setTimeout(() => {
+        timeoutId = setTimeout(() => {
             if (!responseSent) {
                 console.log(`Timeout waiting for pair code for ${cleanPhoneNumber}`);
                 activeClients.delete(cleanPhoneNumber);
                 client.destroy().catch(console.error);
                 sendErrorResponse({ 
-                    error: 'Timeout waiting for pair code',
+                    error: 'Timeout waiting for pair code. Please try again.',
                     phoneNumber: cleanPhoneNumber
                 });
             }
-        }, 45000); // Increased timeout to 45 seconds
+        }, 120000); // Increased timeout to 2 minutes
 
         try {
-            // Initialize client
+            // Initialize client with retry logic
+            console.log(`Initializing WhatsApp client for ${cleanPhoneNumber}...`);
             await client.initialize();
         } catch (error) {
-            clearTimeout(timeout);
+            if (timeoutId) clearTimeout(timeoutId);
             console.error(`Error initializing client for ${cleanPhoneNumber}:`, error);
             activeClients.delete(cleanPhoneNumber);
             
@@ -301,7 +357,8 @@ app.post('/api/generate-pair-code', async (req, res) => {
                 sendErrorResponse({ 
                     error: 'Failed to initialize WhatsApp client', 
                     details: error.message,
-                    phoneNumber: cleanPhoneNumber
+                    phoneNumber: cleanPhoneNumber,
+                    suggestion: 'Please try again in a few minutes'
                 });
             }
         }
@@ -381,15 +438,30 @@ app.get('/health', (req, res) => {
     });
 });
 
+// Root endpoint
+app.get('/', (req, res) => {
+    res.json({
+        message: 'WhatsApp Bot API Server',
+        endpoints: {
+            'POST /api/generate-pair-code': 'Generate pair code for WhatsApp connection',
+            'GET /api/status/:phoneNumber': 'Check client connection status',
+            'DELETE /api/disconnect/:phoneNumber': 'Disconnect client',
+            'GET /api/clients': 'List all active clients',
+            'GET /health': 'Health check'
+        }
+    });
+});
+
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`WhatsApp Bot Server running on port ${PORT}`);
     console.log(`Frontend available at: http://localhost:${PORT}`);
     console.log(`Health check: http://localhost:${PORT}/health`);
 });
 
-// Handle uncaught exceptions
+// Handle uncaught exceptions with better logging
 process.on('uncaughtException', (error) => {
     console.error('Uncaught Exception:', error);
+    console.error('Stack:', error.stack);
     // Don't exit immediately, log and continue
 });
 
