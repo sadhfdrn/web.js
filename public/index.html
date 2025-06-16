@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WhatsApp Bot - Pair Code Generator</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #25D366 0%, #128C7E 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+            font-weight: 300;
+        }
+
+        .header p {
+            opacity: 0.9;
+            font-size: 1.1rem;
+        }
+
+        .form-container {
+            padding: 40px;
+        }
+
+        .form-group {
+            margin-bottom: 25px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #333;
+            font-size: 1.1rem;
+        }
+
+        input[type="tel"] {
+            width: 100%;
+            padding: 15px;
+            border: 2px solid #e1e1e1;
+            border-radius: 10px;
+            font-size: 1.1rem;
+            transition: all 0.3s ease;
+        }
+
+        input[type="tel"]:focus {
+            outline: none;
+            border-color: #25D366;
+            box-shadow: 0 0 0 3px rgba(37, 211, 102, 0.1);
+        }
+
+        .btn {
+            width: 100%;
+            padding: 15px;
+            border: none;
+            border-radius: 10px;
+            font-size: 1.1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #25D366 0%, #128C7E 100%);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(37, 211, 102, 0.3);
+        }
+
+        .btn-secondary {
+            background: #f8f9fa;
+            color: #6c757d;
+            border: 2px solid #e9ecef;
+        }
+
+        .btn-secondary:hover {
+            background: #e9ecef;
+        }
+
+        .btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none !important;
+        }
+
+        .result-container {
+            margin-top: 30px;
+            padding: 25px;
+            border-radius: 10px;
+            display: none;
+        }
+
+        .result-success {
+            background: linear-gradient(135deg, #d4edda 0%, #c3e6cb 100%);
+            border: 1px solid #c3e6cb;
+            color: #155724;
+        }
+
+        .result-error {
+            background: linear-gradient(135deg, #f8d7da 0%, #f5c6cb 100%);
+            border: 1px solid #f5c6cb;
+            color: #721c24;
+        }
+
+        .pair-code {
+            font-size: 2.5rem;
+            font-weight: bold;
+            text-align: center;
+            margin: 20px 0;
+            padding: 20px;
+            background: rgba(255, 255, 255, 0.8);
+            border-radius: 10px;
+            letter-spacing: 3px;
+            font-family: 'Courier New', monospace;
+        }
+
+        .instructions {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 10px;
+            margin-top: 20px;
+        }
+
+        .instructions h3 {
+            color: #25D366;
+            margin-bottom: 15px;
+        }
+
+        .instructions ol {
+            padding-left: 20px;
+        }
+
+        .instructions li {
+            margin-bottom: 8px;
+            line-height: 1.5;
+        }
+
+        .loading {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            border-top-color: #fff;
+            animation: spin 1s ease-in-out infinite;
+            margin-right: 10px;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .status-indicator {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-right: 8px;
+        }
+
+        .status-connected {
+            background: #28a745;
+        }
+
+        .status-disconnected {
+            background: #dc3545;
+        }
+
+        .clients-list {
+            margin-top: 30px;
+            padding: 25px;
+            background: #f8f9fa;
+            border-radius: 10px;
+        }
+
+        .client-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 15px;
+            background: white;
+            border-radius: 8px;
+            margin-bottom: 10px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🤖 WhatsApp Bot</h1>
+            <p>Generate Pair Code & Connect Your Bot</p>
+        </div>
+
+        <div class="form-container">
+            <form id="pairCodeForm">
+                <div class="form-group">
+                    <label for="phoneNumber">📱 Phone Number (with country code)</label>
+                    <input 
+                        type="tel" 
+                        id="phoneNumber" 
+                        placeholder="e.g., +1234567890" 
+                        required
+                    >
+                </div>
+
+                <button type="submit" class="btn btn-primary" id="generateBtn">
+                    Generate Pair Code
+                </button>
+            </form>
+
+            <div id="resultContainer" class="result-container">
+                <div id="resultContent"></div>
+            </div>
+
+            <div class="instructions">
+                <h3>📋 How to Connect:</h3>
+                <ol>
+                    <li>Enter your phone number with country code</li>
+                    <li>Click "Generate Pair Code"</li>
+                    <li>Open WhatsApp on your phone</li>
+                    <li>Go to <strong>Settings → Linked Devices → Link a Device</strong></li>
+                    <li>Tap <strong>"Link with phone number instead"</strong></li>
+                    <li>Enter the generated pair code</li>
+                    <li>Your bot will send you a confirmation message!</li>
+                </ol>
+            </div>
+
+            <div class="clients-list">
+                <h3>🔗 Active Connections</h3>
+                <div id="clientsList">
+                    <p>No active connections</p>
+                </div>
+                <button type="button" class="btn btn-secondary" onclick="refreshClients()">
+                    Refresh Status
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const form = document.getElementById('pairCodeForm');
+        const generateBtn = document.getElementById('generateBtn');
+        const resultContainer = document.getElementById('resultContainer');
+        const resultContent = document.getElementById('resultContent');
+        const clientsList = document.getElementById('clientsList');
+
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const phoneNumber = document.getElementById('phoneNumber').value.trim();
+            
+            if (!phoneNumber) {
+                showResult('error', 'Please enter a phone number');
+                return;
+            }
+
+            // Show loading state
+            generateBtn.disabled = true;
+            generateBtn.innerHTML = '<span class="loading"></span>Generating...';
+            
+            try {
+                const response = await fetch('/api/generate-pair-code', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ phoneNumber })
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    if (data.pairCode) {
+                        showResult('success', `
+                            <h3>✅ Pair Code Generated!</h3>
+                            <div class="pair-code">${data.pairCode}</div>
+                            <p><strong>Phone:</strong> ${data.phoneNumber}</p>
+                            <p>${data.message}</p>
+                        `);
+                    } else {
+                        showResult('success', `
+                            <h3>✅ Already Connected!</h3>
+                            <p><strong>Phone:</strong> ${data.phoneNumber}</p>
+                            <p>${data.message}</p>
+                        `);
+                    }
+                } else {
+                    showResult('error', `❌ Error: ${data.error}`);
+                }
+            } catch (error) {
+                showResult('error', `❌ Network error: ${error.message}`);
+            } finally {
+                // Reset button
+                generateBtn.disabled = false;
+                generateBtn.innerHTML = 'Generate Pair Code';
+                
+                // Refresh clients list
+                setTimeout(refreshClients, 2000);
+            }
+        });
+
+        function showResult(type, content) {
+            resultContainer.className = `result-container result-${type}`;
+            resultContainer.style.display = 'block';
+            resultContent.innerHTML = content;
+        }
+
+        async function refreshClients() {
+            try {
+                const response = await fetch('/api/clients');
+                const data = await response.json();
+                
+                if (data.clients && data.clients.length > 0) {
+                    clientsList.innerHTML = data.clients.map(client => `
+                        <div class="client-item">
+                            <div>
+                                <span class="status-indicator ${client.connected ? 'status-connected' : 'status-disconnected'}"></span>
+                                <strong>${client.phoneNumber}</strong>
+                                <small> (${new Date(client.createdAt).toLocaleString()})</small>
+                            </div>
+                            <div>
+                                ${client.connected ? '🟢 Connected' : '🔴 Disconnected'}
+                            </div>
+                        </div>
+                    `).join('');
+                } else {
+                    clientsList.innerHTML = '<p>No active connections</p>';
+                }
+            } catch (error) {
+                console.error('Error fetching clients:', error);
+                clientsList.innerHTML = '<p>Error loading connections</p>';
+            }
+        }
+
+        // Auto-refresh clients every 10 seconds
+        setInterval(refreshClients, 10000);
+
+        // Initial load
+        refreshClients();
+    </script>
+</body>
+  </html>
