@@ -109,26 +109,56 @@ app.post('/api/generate-pair-code', async (req, res) => {
                     '--disable-backgrounding-occluded-windows',
                     '--disable-renderer-backgrounding',
                     '--disable-field-trial-config',
-                    '--disable-ipc-flooding-protection'
+                    '--disable-ipc-flooding-protection',
+                    '--disable-extensions',
+                    '--disable-plugins',
+                    '--disable-default-apps',
+                    '--disable-component-extensions-with-background-pages',
+                    '--disable-background-networking',
+                    '--disable-sync',
+                    '--disable-translate',
+                    '--hide-scrollbars',
+                    '--metrics-recording-only',
+                    '--mute-audio',
+                    '--no-default-browser-check',
+                    '--no-pings',
+                    '--password-store=basic',
+                    '--use-mock-keychain',
+                    '--force-fieldtrials=*BackgroundTracing/default/',
+                    '--disable-hang-monitor',
+                    '--disable-prompt-on-repost',
+                    '--disable-client-side-phishing-detection',
+                    '--disable-component-update',
+                    '--disable-domain-reliability',
+                    '--user-data-dir=/tmp/chrome-user-data',
+                    '--data-path=/tmp/chrome-data',
+                    '--homedir=/tmp',
+                    '--disk-cache-dir=/tmp/chrome-cache'
                 ],
-                executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/chromium-browser'
+                executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/chromium-browser',
+                timeout: 60000,
+                protocolTimeout: 60000
+            },
+            webVersionCache: {
+                type: 'remote',
+                remotePath: 'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/2.2412.54.html',
             }
         });
 
         let pairCode = null;
         let isConnected = false;
-        let responsesent = false;
+        let responseSent = false;
 
         const sendResponse = (data) => {
-            if (!responsesent) {
-                responseSet = true;
+            if (!responseSent) {
+                responseSent = true;
                 res.json(data);
             }
         };
 
         const sendErrorResponse = (error) => {
-            if (!responseSet) {
-                responseSet = true;
+            if (!responseSent) {
+                responseSent = true;
                 res.status(500).json(error);
             }
         };
@@ -138,7 +168,7 @@ app.post('/api/generate-pair-code', async (req, res) => {
             console.log(`Pair code generated for ${cleanPhoneNumber}: ${code}`);
             pairCode = code;
             
-            if (!responseSet) {
+            if (!responseSent) {
                 sendResponse({ 
                     success: true, 
                     pairCode,
@@ -187,7 +217,7 @@ app.post('/api/generate-pair-code', async (req, res) => {
             console.error(`Authentication failed for ${cleanPhoneNumber}:`, msg);
             activeClients.delete(cleanPhoneNumber);
             
-            if (!responseSet) {
+            if (!responseSent) {
                 sendErrorResponse({ 
                     error: 'Authentication failed', 
                     details: msg,
@@ -206,7 +236,7 @@ app.post('/api/generate-pair-code', async (req, res) => {
         client.on('error', (error) => {
             console.error(`Client ${cleanPhoneNumber} error:`, error);
             
-            if (!responseSet) {
+            if (!responseSent) {
                 sendErrorResponse({ 
                     error: 'Client initialization error', 
                     details: error.message,
@@ -248,7 +278,7 @@ app.post('/api/generate-pair-code', async (req, res) => {
 
         // Set timeout for the entire process
         const timeout = setTimeout(() => {
-            if (!responseSet) {
+            if (!responseSent) {
                 console.log(`Timeout waiting for pair code for ${cleanPhoneNumber}`);
                 activeClients.delete(cleanPhoneNumber);
                 client.destroy().catch(console.error);
@@ -267,7 +297,7 @@ app.post('/api/generate-pair-code', async (req, res) => {
             console.error(`Error initializing client for ${cleanPhoneNumber}:`, error);
             activeClients.delete(cleanPhoneNumber);
             
-            if (!responseSet) {
+            if (!responseSent) {
                 sendErrorResponse({ 
                     error: 'Failed to initialize WhatsApp client', 
                     details: error.message,
