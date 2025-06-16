@@ -14,6 +14,41 @@ app.use(express.static('public'));
 // Store active clients
 const activeClients = new Map();
 
+// Graceful shutdown handling
+process.on('SIGTERM', async () => {
+    console.log('Received SIGTERM, shutting down gracefully...');
+    
+    // Disconnect all clients
+    for (const [phoneNumber, clientData] of activeClients) {
+        try {
+            console.log(`Disconnecting client: ${phoneNumber}`);
+            await clientData.client.destroy();
+        } catch (error) {
+            console.error(`Error disconnecting client ${phoneNumber}:`, error);
+        }
+    }
+    
+    activeClients.clear();
+    process.exit(0);
+});
+
+process.on('SIGINT', async () => {
+    console.log('Received SIGINT, shutting down gracefully...');
+    
+    // Disconnect all clients
+    for (const [phoneNumber, clientData] of activeClients) {
+        try {
+            console.log(`Disconnecting client: ${phoneNumber}`);
+            await clientData.client.destroy();
+        } catch (error) {
+            console.error(`Error disconnecting client ${phoneNumber}:`, error);
+        }
+    }
+    
+    activeClients.clear();
+    process.exit(0);
+});
+
 // Ensure session directory exists
 const ensureSessionDir = async () => {
     const sessionDir = path.join(__dirname, '.wwebjs_auth');
@@ -39,7 +74,15 @@ app.post('/api/generate-pair-code', async (req, res) => {
         const cleanPhoneNumber = phoneNumber.replace(/\D/g, '');
         
         if (activeClients.has(cleanPhoneNumber)) {
-            return res.status(400).json({ error: 'Client already exists for this number' });
+            const existingClient = activeClients.get(cleanPhoneNumber);
+            if (existingClient.isConnected) {
+                return res.json({ 
+                    success: true, 
+                    message: 'Client is already connected!',
+                    phoneNumber: cleanPhoneNumber,
+                    status: 'already_connected'
+                });
+            }
         }
 
         console.log(`Generating pair code for: ${cleanPhoneNumber}`);
@@ -59,24 +102,55 @@ app.post('/api/generate-pair-code', async (req, res) => {
                     '--no-first-run',
                     '--no-zygote',
                     '--single-process',
-                    '--disable-gpu'
+                    '--disable-gpu',
+                    '--disable-web-security',
+                    '--disable-features=VizDisplayCompositor',
+                    '--disable-background-timer-throttling',
+                    '--disable-backgrounding-occluded-windows',
+                    '--disable-renderer-backgrounding',
+                    '--disable-field-trial-config',
+                    '--disable-ipc-flooding-protection'
                 ],
-                executablePath: '/usr/bin/chromium-browser'
+                executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/chromium-browser'
             }
         });
 
         let pairCode = null;
         let isConnected = false;
+        let responsesent = false;
+
+        const sendResponse = (data) => {
+            if (!responsesent) {
+                responseSet = true;
+                res.json(data);
+            }
+        };
+
+        const sendErrorResponse = (error) => {
+            if (!responseSet) {
+                responseSet = true;
+                res.status(500).json(error);
+            }
+        };
 
         // Handle pair code generation
         client.on('code', (code) => {
             console.log(`Pair code generated for ${cleanPhoneNumber}: ${code}`);
             pairCode = code;
+            
+            if (!responseSet) {
+                sendResponse({ 
+                    success: true, 
+                    pairCode,
+                    phoneNumber: cleanPhoneNumber,
+                    message: 'Enter this code in your WhatsApp app: Settings > Linked Devices > Link a Device > Link with phone number instead'
+                });
+            }
         });
 
         // Handle QR code (fallback)
         client.on('qr', (qr) => {
-            console.log(`QR code generated for ${cleanPhoneNumber}`);
+            console.log(`QR code generated for ${cleanPhoneNumber} (fallback)`);
         });
 
         // Handle authentication
@@ -89,29 +163,20 @@ app.post('/api/generate-pair-code', async (req, res) => {
             console.log(`Client ${cleanPhoneNumber} is ready!`);
             isConnected = true;
             
+            // Update client status
+            if (activeClients.has(cleanPhoneNumber)) {
+                activeClients.get(cleanPhoneNumber).isConnected = true;
+            }
+            
             try {
-                // Get session data
-                const sessionPath = path.join(__dirname, '.wwebjs_auth', `session-${cleanPhoneNumber}`);
-                const sessionExists = await fs.access(sessionPath).then(() => true).catch(() => false);
-                
-                if (sessionExists) {
-                    // Send connection info to user
-                    const connectionInfo = {
-                        phoneNumber: cleanPhoneNumber,
-                        connectedAt: new Date().toISOString(),
-                        sessionId: cleanPhoneNumber,
-                        status: 'connected'
-                    };
-
-                    // Send the connection info as a message to the user
-                    await client.sendMessage(cleanPhoneNumber + '@c.us', 
-                        `🎉 *WhatsApp Bot Connected Successfully!*\n\n` +
-                        `📱 Phone: ${cleanPhoneNumber}\n` +
-                        `⏰ Connected at: ${new Date().toLocaleString()}\n` +
-                        `🔑 Session ID: ${cleanPhoneNumber}\n\n` +
-                        `Your bot is now active and ready to receive messages!`
-                    );
-                }
+                // Send connection info to user
+                await client.sendMessage(cleanPhoneNumber + '@c.us', 
+                    `🎉 *WhatsApp Bot Connected Successfully!*\n\n` +
+                    `📱 Phone: ${cleanPhoneNumber}\n` +
+                    `⏰ Connected at: ${new Date().toLocaleString()}\n` +
+                    `🔑 Session ID: ${cleanPhoneNumber}\n\n` +
+                    `Your bot is now active and ready to receive messages!`
+                );
             } catch (error) {
                 console.error('Error sending connection info:', error);
             }
@@ -121,6 +186,14 @@ app.post('/api/generate-pair-code', async (req, res) => {
         client.on('auth_failure', (msg) => {
             console.error(`Authentication failed for ${cleanPhoneNumber}:`, msg);
             activeClients.delete(cleanPhoneNumber);
+            
+            if (!responseSet) {
+                sendErrorResponse({ 
+                    error: 'Authentication failed', 
+                    details: msg,
+                    phoneNumber: cleanPhoneNumber
+                });
+            }
         });
 
         // Handle disconnection
@@ -129,15 +202,39 @@ app.post('/api/generate-pair-code', async (req, res) => {
             activeClients.delete(cleanPhoneNumber);
         });
 
+        // Handle errors
+        client.on('error', (error) => {
+            console.error(`Client ${cleanPhoneNumber} error:`, error);
+            
+            if (!responseSet) {
+                sendErrorResponse({ 
+                    error: 'Client initialization error', 
+                    details: error.message,
+                    phoneNumber: cleanPhoneNumber
+                });
+            }
+        });
+
         // Handle incoming messages (example functionality)
         client.on('message', async (message) => {
             console.log(`Message from ${message.from}: ${message.body}`);
             
-            // Auto-reply functionality
-            if (message.body.toLowerCase() === 'ping') {
-                await message.reply('pong! 🏓');
-            } else if (message.body.toLowerCase() === 'status') {
-                await message.reply(`Bot is online! 🟢\nConnected as: ${cleanPhoneNumber}`);
+            try {
+                // Auto-reply functionality
+                if (message.body.toLowerCase() === 'ping') {
+                    await message.reply('pong! 🏓');
+                } else if (message.body.toLowerCase() === 'status') {
+                    await message.reply(`Bot is online! 🟢\nConnected as: ${cleanPhoneNumber}`);
+                } else if (message.body.toLowerCase() === 'help') {
+                    await message.reply(
+                        `🤖 *Bot Commands:*\n\n` +
+                        `• ping - Test bot response\n` +
+                        `• status - Check bot status\n` +
+                        `• help - Show this help message`
+                    );
+                }
+            } catch (error) {
+                console.error('Error handling message:', error);
             }
         });
 
@@ -149,42 +246,44 @@ app.post('/api/generate-pair-code', async (req, res) => {
             isConnected: false
         });
 
-        // Initialize client
-        await client.initialize();
-
-        // Wait for pair code generation (timeout after 30 seconds)
+        // Set timeout for the entire process
         const timeout = setTimeout(() => {
-            if (!pairCode && !isConnected) {
+            if (!responseSet) {
+                console.log(`Timeout waiting for pair code for ${cleanPhoneNumber}`);
                 activeClients.delete(cleanPhoneNumber);
-                res.status(408).json({ error: 'Timeout waiting for pair code' });
-            }
-        }, 30000);
-
-        // Check for pair code every 500ms
-        const checkPairCode = setInterval(() => {
-            if (pairCode) {
-                clearInterval(checkPairCode);
-                clearTimeout(timeout);
-                res.json({ 
-                    success: true, 
-                    pairCode,
-                    phoneNumber: cleanPhoneNumber,
-                    message: 'Enter this code in your WhatsApp app: Settings > Linked Devices > Link a Device > Link with phone number instead'
-                });
-            } else if (isConnected) {
-                clearInterval(checkPairCode);
-                clearTimeout(timeout);
-                res.json({ 
-                    success: true, 
-                    message: 'Already connected!',
+                client.destroy().catch(console.error);
+                sendErrorResponse({ 
+                    error: 'Timeout waiting for pair code',
                     phoneNumber: cleanPhoneNumber
                 });
             }
-        }, 500);
+        }, 45000); // Increased timeout to 45 seconds
+
+        try {
+            // Initialize client
+            await client.initialize();
+        } catch (error) {
+            clearTimeout(timeout);
+            console.error(`Error initializing client for ${cleanPhoneNumber}:`, error);
+            activeClients.delete(cleanPhoneNumber);
+            
+            if (!responseSet) {
+                sendErrorResponse({ 
+                    error: 'Failed to initialize WhatsApp client', 
+                    details: error.message,
+                    phoneNumber: cleanPhoneNumber
+                });
+            }
+        }
 
     } catch (error) {
         console.error('Error generating pair code:', error);
-        res.status(500).json({ error: 'Failed to generate pair code', details: error.message });
+        if (!res.headersSent) {
+            res.status(500).json({ 
+                error: 'Failed to generate pair code', 
+                details: error.message 
+            });
+        }
     }
 });
 
@@ -236,10 +335,35 @@ app.get('/api/clients', (req, res) => {
         createdAt: data.createdAt
     }));
     
-    res.json({ clients });
+    res.json({ 
+        success: true,
+        count: clients.length,
+        clients 
+    });
 });
 
-app.listen(PORT, () => {
+// Health check endpoint
+app.get('/health', (req, res) => {
+    res.json({ 
+        status: 'healthy', 
+        timestamp: new Date().toISOString(),
+        activeClients: activeClients.size
+    });
+});
+
+app.listen(PORT, '0.0.0.0', () => {
     console.log(`WhatsApp Bot Server running on port ${PORT}`);
     console.log(`Frontend available at: http://localhost:${PORT}`);
+    console.log(`Health check: http://localhost:${PORT}/health`);
+});
+
+// Handle uncaught exceptions
+process.on('uncaughtException', (error) => {
+    console.error('Uncaught Exception:', error);
+    // Don't exit immediately, log and continue
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+    console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+    // Don't exit immediately, log and continue
 });
