@@ -1,10 +1,10 @@
-// server.js - Updated for Docker container with local Chrome
+// server.js - Updated for Docker container with local Chrome and QR Code support
 const express = require('express');
 const { create } = require('@wppconnect-team/wppconnect');
 const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
-
+const QRCode = require('qrcode');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
@@ -82,9 +82,9 @@ function storeUserCredentials(sessionId, phoneNumber, credentials) {
 }
 
 // Initialize WhatsApp connection with local Chrome
-async function initializeWhatsApp(phoneNumber, sessionId) {
+async function initializeWhatsApp(phoneNumber, sessionId, useQR = false) {
     try {
-        console.log(`Initializing WhatsApp for phone: ${phoneNumber}, session: ${sessionId}`);
+        console.log(`Initializing WhatsApp for phone: ${phoneNumber}, session: ${sessionId}, useQR: ${useQR}`);
         console.log(`Using Chrome executable: ${CHROME_EXECUTABLE_PATH}`);
         
         // Load existing token if available
@@ -106,6 +106,9 @@ async function initializeWhatsApp(phoneNumber, sessionId) {
             createPathFileToken: true,
             waitForLogin: true,
             executablePath: CHROME_EXECUTABLE_PATH,
+            
+            // Connection method - QR code or pairing code
+            linkingMethod: useQR ? 'qr-code' : 'pairing-code',
             
             // Enhanced browser arguments for Docker container
             browserArgs: [
@@ -167,16 +170,38 @@ async function initializeWhatsApp(phoneNumber, sessionId) {
             
             // QR Code handler
             catchQR: (base64Qr, asciiQR, attempts, urlCode) => {
-                console.log('QR Code generated for session:', sessionId);
-                console.log('QR Code attempts:', attempts);
+    console.log('QR Code generated for session:', sessionId);
+    console.log('QR Code attempts:', attempts);
+
+    const session = sessions.get(sessionId);
+    if (session) {
+        QRCode.toDataURL(urlCode, { margin: 1 }, (err, dataUrl) => {
+            if (err) {
+                console.error('Failed to generate QR image:', err);
+                return;
+            }
+            session.qrCode = dataUrl.replace(/^data:image\/png;base64,/, '');
+        });
+        session.qrAttempts = attempts;
+        session.qrUrl = urlCode;
+        session.status = 'qr_code_ready';
+        session.qrCodeExpiry = new Date(Date.now() + 60000); // 1 minute
+        sessions.set(sessionId, session);
+        console.log('QR Code stored for session:', sessionId);
+    }
+},
+            // Pairing code handler
+            catchPairingCode: (pairingCode) => {
+                console.log('Pairing code generated for session:', sessionId, 'Code:', pairingCode);
                 
                 const session = sessions.get(sessionId);
                 if (session) {
-                    session.qrCode = base64Qr;
-                    session.qrAttempts = attempts;
-                    session.qrUrl = urlCode;
-                    session.status = 'qr_code_ready';
+                    session.pairingCode = pairingCode;
+                    session.status = 'pairing_code_ready';
+                    session.pairingCodeExpiry = new Date(Date.now() + 300000); // 5 minutes expiry
                     sessions.set(sessionId, session);
+                    
+                    console.log('Pairing code stored for session:', sessionId);
                 }
             },
             
@@ -209,9 +234,13 @@ async function initializeWhatsApp(phoneNumber, sessionId) {
             client,
             phoneNumber,
             status: 'connecting',
+            connectionMethod: useQR ? 'qr-code' : 'pairing-code',
             qrCode: null,
             qrAttempts: 0,
             qrUrl: null,
+            qrCodeExpiry: null,
+            pairingCode: null,
+            pairingCodeExpiry: null,
             loadingPercent: 0,
             loadingMessage: '',
             timestamp: new Date()
@@ -316,7 +345,7 @@ app.get('/', (req, res) => {
 // Initialize connection
 app.post('/api/connect', async (req, res) => {
     try {
-        const { phoneNumber } = req.body;
+        const { phoneNumber, method = 'pairing-code' } = req.body;
         
         if (!phoneNumber) {
             return res.status(400).json({ error: 'Phone number is required' });
@@ -333,13 +362,20 @@ app.post('/api/connect', async (req, res) => {
         // Generate session ID
         const sessionId = generateSessionId();
         
+        // Validate method
+        const useQR = method === 'qr-code';
+        
         // Store initial session info
         sessions.set(sessionId, {
             phoneNumber: formattedPhone,
             status: 'initializing',
+            connectionMethod: method,
             qrCode: null,
             qrAttempts: 0,
             qrUrl: null,
+            qrCodeExpiry: null,
+            pairingCode: null,
+            pairingCodeExpiry: null,
             loadingPercent: 0,
             loadingMessage: '',
             timestamp: new Date()
@@ -348,7 +384,7 @@ app.post('/api/connect', async (req, res) => {
         // Initialize WhatsApp connection in background
         setImmediate(async () => {
             try {
-                await initializeWhatsApp(formattedPhone, sessionId);
+                await initializeWhatsApp(formattedPhone, sessionId, useQR);
             } catch (error) {
                 console.error('Background initialization error:', error);
                 const session = sessions.get(sessionId);
@@ -363,7 +399,8 @@ app.post('/api/connect', async (req, res) => {
         res.json({
             success: true,
             sessionId,
-            message: 'Connection process started. Please wait for QR code generation.'
+            method,
+            message: `Connection process started using ${method}. Please wait...`
         });
     } catch (error) {
         console.error('Connect error:', error);
@@ -397,19 +434,111 @@ app.get('/api/status/:sessionId', async (req, res) => {
         }
     }
 
+    // Check if QR code or pairing code has expired
+    let qrExpired = false;
+    let pairingExpired = false;
+    
+    if (session.qrCodeExpiry) {
+        qrExpired = new Date() > session.qrCodeExpiry;
+    }
+    
+    if (session.pairingCodeExpiry) {
+        pairingExpired = new Date() > session.pairingCodeExpiry;
+    }
+
     res.json({
         sessionId,
         phoneNumber: session.phoneNumber,
         status: session.status,
+        connectionMethod: session.connectionMethod,
         qrCode: session.qrCode,
         qrAttempts: session.qrAttempts,
         qrUrl: session.qrUrl,
+        qrExpired,
+        pairingCode: session.pairingCode,
+        pairingExpired,
         loadingPercent: session.loadingPercent,
         loadingMessage: session.loadingMessage,
         isConnected,
         timestamp: session.timestamp,
         error: session.error || null
     });
+});
+
+// Generate new QR code
+app.post('/api/generate-qr/:sessionId', async (req, res) => {
+    const { sessionId } = req.params;
+    const session = sessions.get(sessionId);
+    
+    if (!session) {
+        return res.status(404).json({ error: 'Session not found' });
+    }
+
+    if (session.connectionMethod !== 'qr-code') {
+        return res.status(400).json({ error: 'Session is not using QR code method' });
+    }
+
+    try {
+        if (session.client && session.client.getQR) {
+            const qrData = await session.client.getQR();
+            if (qrData) {
+                session.qrCode = qrData;
+                session.qrCodeExpiry = new Date(Date.now() + 60000); // 1 minute expiry
+                sessions.set(sessionId, session);
+                
+                res.json({
+                    success: true,
+                    qrCode: qrData,
+                    message: 'New QR code generated'
+                });
+            } else {
+                res.status(500).json({ error: 'Failed to generate QR code' });
+            }
+        } else {
+            res.status(400).json({ error: 'QR code generation not available' });
+        }
+    } catch (error) {
+        console.error('QR generation error:', error);
+        res.status(500).json({ error: 'Failed to generate QR code' });
+    }
+});
+
+// Generate new pairing code
+app.post('/api/generate-pairing-code/:sessionId', async (req, res) => {
+    const { sessionId } = req.params;
+    const session = sessions.get(sessionId);
+    
+    if (!session) {
+        return res.status(404).json({ error: 'Session not found' });
+    }
+
+    if (session.connectionMethod !== 'pairing-code') {
+        return res.status(400).json({ error: 'Session is not using pairing code method' });
+    }
+
+    try {
+        if (session.client && session.client.getPairingCode) {
+            const pairingCode = await session.client.getPairingCode();
+            if (pairingCode) {
+                session.pairingCode = pairingCode;
+                session.pairingCodeExpiry = new Date(Date.now() + 300000); // 5 minutes expiry
+                sessions.set(sessionId, session);
+                
+                res.json({
+                    success: true,
+                    pairingCode: pairingCode,
+                    message: 'New pairing code generated'
+                });
+            } else {
+                res.status(500).json({ error: 'Failed to generate pairing code' });
+            }
+        } else {
+            res.status(400).json({ error: 'Pairing code generation not available' });
+        }
+    } catch (error) {
+        console.error('Pairing code generation error:', error);
+        res.status(500).json({ error: 'Failed to generate pairing code' });
+    }
 });
 
 // Restart session
@@ -431,14 +560,18 @@ app.post('/api/restart/:sessionId', async (req, res) => {
         session.status = 'initializing';
         session.qrCode = null;
         session.qrAttempts = 0;
+        session.qrCodeExpiry = null;
+        session.pairingCode = null;
+        session.pairingCodeExpiry = null;
         session.error = null;
         session.client = null;
         sessions.set(sessionId, session);
 
         // Restart connection
+        const useQR = session.connectionMethod === 'qr-code';
         setImmediate(async () => {
             try {
-                await initializeWhatsApp(session.phoneNumber, sessionId);
+                await initializeWhatsApp(session.phoneNumber, sessionId, useQR);
             } catch (error) {
                 console.error('Restart error:', error);
                 session.status = 'error';
@@ -586,6 +719,26 @@ setInterval(() => {
             if (fs.existsSync(tokenPath)) {
                 fs.unlinkSync(tokenPath);
             }
+            
+            // Clean up credentials file
+            const credPath = path.join(__dirname, 'credentials', `${sessionId}.json`);
+            if (fs.existsSync(credPath)) {
+                fs.unlinkSync(credPath);
+            }
         }
     }
-}, 60 * 60 * 1000);
+}, 60 * 60 * 1000); // Run every hour
+
+// Handle uncaught exceptions
+process.on('uncaughtException', (error) => {
+    console.error('Uncaught Exception:', error);
+    process.exit(1);
+});
+
+// Handle unhandled promise rejections
+process.on('unhandledRejection', (reason, promise) => {
+    console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+    process.exit(1);
+});
+
+module.exports = app; 
