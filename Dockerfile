@@ -14,7 +14,7 @@ COPY . .
 RUN npm ci --omit=dev
 
 # ✅ Set Firefox path (used by Puppeteer or Playwright)
-ENV CHROME_EXECUTABLE_PATH=/usr/bin/firefox
+ENV CHROME_EXECUTABLE_PATH=/usr/bin/google-chrome-stable
 
 # ✅ Set Node environment
 ENV NODE_ENV=production
