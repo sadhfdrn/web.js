@@ -26,7 +26,7 @@
             border-radius: 20px;
             padding: 40px;
             box-shadow: 0 20px 40px rgba(0,0,0,0.1);
-            max-width: 500px;
+            max-width: 600px;
             width: 100%;
         }
 
@@ -69,6 +69,48 @@
         input[type="tel"]:focus {
             outline: none;
             border-color: #25d366;
+        }
+
+        .connection-method {
+            margin-bottom: 20px;
+        }
+
+        .method-options {
+            display: flex;
+            gap: 15px;
+            margin-top: 10px;
+        }
+
+        .method-option {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            cursor: pointer;
+            padding: 10px 15px;
+            border: 2px solid #e1e1e1;
+            border-radius: 10px;
+            transition: all 0.3s;
+            flex: 1;
+        }
+
+        .method-option:hover {
+            border-color: #25d366;
+            background: #f8fff8;
+        }
+
+        .method-option.selected {
+            border-color: #25d366;
+            background: #f8fff8;
+        }
+
+        .method-option input[type="radio"] {
+            margin: 0;
+        }
+
+        .method-option label {
+            margin: 0;
+            font-weight: 500;
+            cursor: pointer;
         }
 
         .phone-format-hint {
@@ -186,84 +228,15 @@
             color: #666;
         }
 
-        .session-info .pairing-code {
-            font-family: monospace;
-            font-size: 24px;
-            font-weight: bold;
-            color: #25d366;
-            background: white;
-            padding: 15px 20px;
-            border-radius: 10px;
+        .connection-method-display {
             display: inline-block;
-            margin-top: 15px;
-            border: 3px solid #25d366;
-            letter-spacing: 3px;
-            text-align: center;
-            min-width: 150px;
-        }
-
-        .pairing-code-container {
-            text-align: center;
-            margin: 20px 0;
-        }
-
-        .pairing-code-label {
-            font-size: 18px;
-            font-weight: bold;
-            color: #333;
-            margin-bottom: 10px;
-        }
-
-        .pairing-instructions {
-            margin-top: 20px;
-            padding: 15px;
-            background: #e8f4fd;
-            border-radius: 10px;
-            border-left: 4px solid #007bff;
-        }
-
-        .pairing-instructions h4 {
-            color: #007bff;
-            margin-bottom: 10px;
-            font-size: 16px;
-        }
-
-        .pairing-instructions ol {
-            padding-left: 20px;
-            color: #495057;
-            font-size: 14px;
-        }
-
-        .pairing-instructions li {
-            margin-bottom: 8px;
-            line-height: 1.4;
-        }
-
-        .pairing-code-expired {
-            background: #fff3cd;
-            color: #856404;
-            border: 2px solid #ffeaa7;
-            padding: 10px;
-            border-radius: 8px;
-            margin-top: 10px;
-            text-align: center;
-            font-size: 14px;
-        }
-
-        .refresh-code-btn {
-            background: #17a2b8;
+            padding: 4px 8px;
+            background: #25d366;
             color: white;
-            border: none;
-            padding: 10px 20px;
-            border-radius: 8px;
-            cursor: pointer;
-            font-size: 14px;
-            margin-top: 10px;
-            transition: background 0.3s;
-        }
-
-        .refresh-code-btn:hover {
-            background: #138496;
+            border-radius: 6px;
+            font-size: 12px;
+            font-weight: bold;
+            text-transform: uppercase;
         }
 
         .connection-status {
@@ -292,6 +265,136 @@
             border: 1px solid #f5c6cb;
         }
 
+        /* QR Code Styles */
+        .qr-section {
+            display: none;
+            text-align: center;
+            margin-top: 20px;
+        }
+
+        .qr-code-container {
+            background: white;
+            padding: 20px;
+            border-radius: 15px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+            border: 3px solid #25d366;
+            margin: 20px 0;
+            display: inline-block;
+        }
+
+        .qr-code-image {
+            max-width: 300px;
+            width: 100%;
+            height: auto;
+            border-radius: 10px;
+        }
+
+        .qr-instructions {
+            margin-top: 20px;
+            padding: 15px;
+            background: #e8f4fd;
+            border-radius: 10px;
+            border-left: 4px solid #007bff;
+        }
+
+        .qr-instructions h4 {
+            color: #007bff;
+            margin-bottom: 10px;
+            font-size: 16px;
+        }
+
+        .qr-instructions ol {
+            padding-left: 20px;
+            color: #495057;
+            font-size: 14px;
+        }
+
+        .qr-instructions li {
+            margin-bottom: 8px;
+            line-height: 1.4;
+        }
+
+        /* Pairing Code Styles */
+        .pairing-section {
+            display: none;
+            margin-top: 20px;
+        }
+
+        .pairing-code-container {
+            text-align: center;
+            margin: 20px 0;
+        }
+
+        .pairing-code-label {
+            font-size: 18px;
+            font-weight: bold;
+            color: #333;
+            margin-bottom: 10px;
+        }
+
+        .pairing-code {
+            font-family: monospace;
+            font-size: 24px;
+            font-weight: bold;
+            color: #25d366;
+            background: white;
+            padding: 15px 20px;
+            border-radius: 10px;
+            display: inline-block;
+            margin-top: 15px;
+            border: 3px solid #25d366;
+            letter-spacing: 3px;
+            text-align: center;
+            min-width: 150px;
+        }
+
+        .pairing-instructions {
+            margin-top: 20px;
+            padding: 15px;
+            background: #e8f4fd;
+            border-radius: 10px;
+            border-left: 4px solid #007bff;
+        }
+
+        .pairing-instructions h4 {
+            color: #007bff;
+            margin-bottom: 10px;
+            font-size: 16px;
+        }
+
+        .pairing-instructions ol {
+            padding-left: 20px;
+            color: #495057;
+            font-size: 14px;
+        }
+
+        .pairing-instructions li {
+            margin-bottom: 8px;
+            line-height: 1.4;
+        }
+
+        .countdown {
+            font-size: 12px;
+            color: #666;
+            margin-top: 5px;
+        }
+
+        .refresh-code-btn {
+            background: #17a2b8;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            margin-top: 10px;
+            transition: background 0.3s;
+        }
+
+        .refresh-code-btn:hover {
+            background: #138496;
+        }
+
         .actions {
             margin-top: 20px;
             display: none;
@@ -318,12 +421,6 @@
             font-size: 12px;
         }
 
-        .countdown {
-            font-size: 12px;
-            color: #666;
-            margin-top: 5px;
-        }
-
         @media (max-width: 480px) {
             .container {
                 padding: 20px;
@@ -333,9 +430,23 @@
                 font-size: 24px;
             }
 
+            .method-options {
+                flex-direction: column;
+                gap: 10px;
+            }
+
             .pairing-code {
                 font-size: 20px !important;
                 padding: 12px 15px !important;
+            }
+
+            .qr-code-container {
+                padding: 15px;
+                margin: 15px 0;
+            }
+
+            .qr-code-image {
+                max-width: 250px;
             }
         }
     </style>
@@ -344,7 +455,7 @@
     <div class="container">
         <div class="header">
             <h1>📱 WhatsApp Connector</h1>
-            <p>Connect your WhatsApp account with pairing code</p>
+            <p>Connect your WhatsApp account with QR code or pairing code</p>
         </div>
 
         <form id="connectForm">
@@ -359,6 +470,20 @@
                 >
                 <div class="phone-format-hint">
                     Include country code (e.g., +1 for US, +234 for Nigeria)
+                </div>
+            </div>
+
+            <div class="connection-method">
+                <label>Connection Method</label>
+                <div class="method-options">
+                    <div class="method-option selected" onclick="selectMethod('pairing-code')">
+                        <input type="radio" name="method" value="pairing-code" id="pairingRadio" checked>
+                        <label for="pairingRadio">📱 Pairing Code</label>
+                    </div>
+                    <div class="method-option" onclick="selectMethod('qr-code')">
+                        <input type="radio" name="method" value="qr-code" id="qrRadio">
+                        <label for="qrRadio">📷 QR Code</label>
+                    </div>
                 </div>
             </div>
 
@@ -378,19 +503,44 @@
             <h3>Connection Details</h3>
             <p><strong>Session ID:</strong> <span id="sessionId"></span></p>
             <p><strong>Phone:</strong> <span id="sessionPhone"></span></p>
+            <p><strong>Method:</strong> <span class="connection-method-display" id="connectionMethod">PAIRING CODE</span></p>
             
             <div class="connection-status" id="connectionStatus">
                 Initializing...
             </div>
 
-            <div id="pairingSection" style="display: none;">
+            <!-- QR Code Section -->
+            <div id="qrSection" class="qr-section">
+                <div class="qr-code-container">
+                    <img id="qrCodeImage" class="qr-code-image" alt="WhatsApp QR Code" />
+                </div>
+                <div class="countdown" id="qrCountdown"></div>
+                
+                <button class="refresh-code-btn" id="refreshQRBtn" onclick="generateNewQRCode()">
+                    🔄 Generate New QR Code
+                </button>
+
+                <div class="qr-instructions">
+                    <h4>📷 How to scan the QR code:</h4>
+                    <ol>
+                        <li>Open <strong>WhatsApp</strong> on your phone</li>
+                        <li>Go to <strong>Settings</strong> → <strong>Linked Devices</strong></li>
+                        <li>Tap <strong>"Link a device"</strong></li>
+                        <li>Point your camera at the <strong>QR code</strong> above</li>
+                        <li>Wait for the connection to complete</li>
+                    </ol>
+                </div>
+            </div>
+
+            <!-- Pairing Code Section -->
+            <div id="pairingSection" class="pairing-section">
                 <div class="pairing-code-container">
                     <div class="pairing-code-label">Your Pairing Code:</div>
                     <div class="pairing-code" id="pairingCode">------</div>
-                    <div class="countdown" id="countdown"></div>
+                    <div class="countdown" id="pairingCountdown"></div>
                 </div>
 
-                <button class="refresh-code-btn" id="refreshCodeBtn" onclick="generateNewPairingCode()">
+                <button class="refresh-code-btn" id="refreshPairingBtn" onclick="generateNewPairingCode()">
                     🔄 Generate New Code
                 </button>
 
@@ -429,9 +579,32 @@
 
     <script>
         let currentSessionId = null;
+        let currentMethod = 'pairing-code';
         let statusInterval = null;
-        let countdownInterval = null;
+        let qrCountdownInterval = null;
+        let pairingCountdownInterval = null;
+        let qrCodeExpiry = null;
         let pairingCodeExpiry = null;
+
+        // Select connection method
+        function selectMethod(method) {
+            currentMethod = method;
+            
+            // Update radio buttons
+            document.getElementById('pairingRadio').checked = method === 'pairing-code';
+            document.getElementById('qrRadio').checked = method === 'qr-code';
+            
+            // Update visual selection
+            document.querySelectorAll('.method-option').forEach(option => {
+                option.classList.remove('selected');
+            });
+            
+            if (method === 'pairing-code') {
+                document.querySelector('.method-option:first-child').classList.add('selected');
+            } else {
+                document.querySelector('.method-option:last-child').classList.add('selected');
+            }
+        }
 
         // Form submission
         document.getElementById('connectForm').addEventListener('submit', async (e) => {
@@ -449,11 +622,11 @@
                 return;
             }
 
-            await connectToWhatsApp(phoneNumber);
+            await connectToWhatsApp(phoneNumber, currentMethod);
         });
 
         // Connect to WhatsApp
-        async function connectToWhatsApp(phoneNumber) {
+        async function connectToWhatsApp(phoneNumber, method) {
             try {
                 showLoading(true);
                 hideStatus();
@@ -465,20 +638,20 @@
                     headers: {
                         'Content-Type': 'application/json',
                     },
-                    body: JSON.stringify({ phoneNumber }),
+                    body: JSON.stringify({ phoneNumber, method }),
                 });
 
                 const data = await response.json();
                 
                 if (data.success) {
                     currentSessionId = data.sessionId;
-                    showStatus('Connection initiated successfully! Please wait for pairing code...', 'success');
+                    showStatus(`Connection initiated successfully! Please wait for ${method === 'qr-code' ? 'QR code' : 'pairing code'}...`, 'success');
                     
                     // Start monitoring status
                     startStatusMonitoring();
                     
                     // Show session info
-                    showSessionInfo(data.sessionId, phoneNumber);
+                    showSessionInfo(data.sessionId, phoneNumber, method);
                     
                 } else {
                     showStatus(`Error: ${data.error}`, 'error');
@@ -518,13 +691,19 @@
                 if (response.ok) {
                     updateConnectionStatus(data.status);
                     
+                    // Update QR code if available
+                    if (data.qrCode && data.connectionMethod === 'qr-code') {
+                        showQRCode(data.qrCode);
+                    }
+                    
                     // Update pairing code if available
-                    if (data.pairingCode && data.pairingCode !== '------') {
+                    if (data.pairingCode && data.connectionMethod === 'pairing-code') {
                         showPairingCode(data.pairingCode);
                     }
                     
                     // Handle different connection states
                     switch (data.status) {
+                        case 'CONNECTED':
                         case 'connected':
                             clearInterval(statusInterval);
                             showStatus('✅ WhatsApp connected successfully!', 'success');
@@ -534,7 +713,11 @@
                             clearInterval(statusInterval);
                             showStatus(`❌ Connection failed: ${data.error}`, 'error');
                             break;
-                        case 'pairing_code_generated':
+                        case 'qr_code_ready':
+                            if (data.qrCode) {
+                                showQRCode(data.qrCode);
+                            }
+                            break;
                         case 'pairing_code_ready':
                             if (data.pairingCode) {
                                 showPairingCode(data.pairingCode);
@@ -547,6 +730,100 @@
             } catch (error) {
                 console.error('Status check error:', error);
                 showStatus('Failed to check connection status', 'error');
+            }
+        }
+
+        // Show QR code
+        function showQRCode(base64QR) {
+            const qrImage = document.getElementById('qrCodeImage');
+            qrImage.src = `data:image/png;base64,${base64QR}`;
+            document.getElementById('qrSection').style.display = 'block';
+            document.getElementById('pairingSection').style.display = 'none';
+            
+            // Set expiry time (1 minute from now)
+            qrCodeExpiry = new Date(Date.now() + 60000);
+            startQRCountdown();
+        }
+
+        // Show pairing code
+        function showPairingCode(code) {
+            document.getElementById('pairingCode').textContent = code;
+            document.getElementById('pairingSection').style.display = 'block';
+            document.getElementById('qrSection').style.display = 'none';
+            
+            // Set expiry time (5 minutes from now)
+            pairingCodeExpiry = new Date(Date.now() + 5 * 60 * 1000);
+            startPairingCountdown();
+        }
+
+        // Start QR countdown timer
+        function startQRCountdown() {
+            if (qrCountdownInterval) {
+                clearInterval(qrCountdownInterval);
+            }
+            
+            qrCountdownInterval = setInterval(() => {
+                const now = new Date();
+                const timeLeft = qrCodeExpiry - now;
+                
+                if (timeLeft <= 0) {
+                    clearInterval(qrCountdownInterval);
+                    document.getElementById('qrCountdown').textContent = 'QR Code expired - Generate new code';
+                    document.getElementById('qrCountdown').style.color = '#dc3545';
+                } else {
+                    const seconds = Math.floor(timeLeft / 1000);
+                    document.getElementById('qrCountdown').textContent = `QR Code expires in ${seconds} seconds`;
+                    document.getElementById('qrCountdown').style.color = '#666';
+                }
+            }, 1000);
+        }
+
+        // Start pairing countdown timer
+        function startPairingCountdown() {
+            if (pairingCountdownInterval) {
+                clearInterval(pairingCountdownInterval);
+            }
+            
+            pairingCountdownInterval = setInterval(() => {
+                const now = new Date();
+                const timeLeft = pairingCodeExpiry - now;
+                
+                if (timeLeft <= 0) {
+                    clearInterval(pairingCountdownInterval);
+                    document.getElementById('pairingCountdown').textContent = 'Code expired - Generate new code';
+                    document.getElementById('pairingCountdown').style.color = '#dc3545';
+                } else {
+                    const minutes = Math.floor(timeLeft / 60000);
+                    const seconds = Math.floor((timeLeft % 60000) / 1000);
+                    document.getElementById('pairingCountdown').textContent = `Expires in ${minutes}:${seconds.toString().padStart(2, '0')}`;
+                    document.getElementById('pairingCountdown').style.color = '#666';
+                }
+            }, 1000);
+        }
+
+        // Generate new QR code
+        async function generateNewQRCode() {
+            if (!currentSessionId) {
+                showStatus('No active session', 'warning');
+                return;
+            }
+
+            try {
+                const response = await fetch(`/api/generate-qr/${currentSessionId}`, {
+                    method: 'POST',
+                });
+
+                const data = await response.json();
+                
+                if (data.success) {
+                    showQRCode(data.qrCode);
+                    showStatus('New QR code generated', 'success');
+                } else {
+                    showStatus(`Failed to generate QR code: ${data.error}`, 'error');
+                }
+            } catch (error) {
+                console.error('QR code generation error:', error);
+                showStatus('Failed to generate new QR code', 'error');
             }
         }
 
@@ -619,8 +896,11 @@
                     if (statusInterval) {
                         clearInterval(statusInterval);
                     }
-                    if (countdownInterval) {
-                        clearInterval(countdownInterval);
+                    if (qrCountdownInterval) {
+                        clearInterval(qrCountdownInterval);
+                    }
+                    if (pairingCountdownInterval) {
+                        clearInterval(pairingCountdownInterval);
                     }
                     
                     currentSessionId = null;
@@ -638,39 +918,6 @@
             }
         }
 
-        // Show pairing code
-        function showPairingCode(code) {
-            document.getElementById('pairingCode').textContent = code;
-            document.getElementById('pairingSection').style.display = 'block';
-            
-            // Set expiry time (5 minutes from now)
-            pairingCodeExpiry = new Date(Date.now() + 5 * 60 * 1000);
-            startCountdown();
-        }
-
-        // Start countdown timer
-        function startCountdown() {
-            if (countdownInterval) {
-                clearInterval(countdownInterval);
-            }
-            
-            countdownInterval = setInterval(() => {
-                const now = new Date();
-                const timeLeft = pairingCodeExpiry - now;
-                
-                if (timeLeft <= 0) {
-                    clearInterval(countdownInterval);
-                    document.getElementById('countdown').textContent = 'Code expired - Generate new code';
-                    document.getElementById('countdown').style.color = '#dc3545';
-                } else {
-                    const minutes = Math.floor(timeLeft / 60000);
-                    const seconds = Math.floor((timeLeft % 60000) / 1000);
-                    document.getElementById('countdown').textContent = `Expires in ${minutes}:${seconds.toString().padStart(2, '0')}`;
-                    document.getElementById('countdown').style.color = '#666';
-                }
-            }, 1000);
-        }
-
         // Update connection status display
         function updateConnectionStatus(status) {
             const statusEl = document.getElementById('connectionStatus');
@@ -685,7 +932,10 @@
                     statusEl.textContent = '📶 Connecting to WhatsApp...';
                     statusEl.classList.add('connecting');
                     break;
-                case 'pairing_code_generated':
+                case 'qr_code_ready':
+                    statusEl.textContent = '📷 QR code ready - Scan with WhatsApp';
+                    statusEl.classList.add('connecting');
+                    break;
                 case 'pairing_code_ready':
                     statusEl.textContent = '📱 Pairing code ready - Enter in WhatsApp';
                     statusEl.classList.add('connecting');
@@ -694,6 +944,7 @@
                     statusEl.textContent = '⏳ Waiting for pairing confirmation...';
                     statusEl.classList.add('connecting');
                     break;
+                case 'CONNECTED':
                 case 'connected':
                     statusEl.textContent = '✅ Successfully connected to WhatsApp!';
                     statusEl.classList.add('connected');
@@ -706,12 +957,13 @@
                     statusEl.textContent = `Status: ${status}`;
                     statusEl.classList.add('connecting');
             }
-        }
+}
 
         // Show session info
-        function showSessionInfo(sessionId, phoneNumber) {
+        function showSessionInfo(sessionId, phoneNumber, method) {
             document.getElementById('sessionId').textContent = sessionId;
             document.getElementById('sessionPhone').textContent = phoneNumber;
+            document.getElementById('connectionMethod').textContent = method.toUpperCase().replace('-', ' ');
             document.getElementById('sessionInfo').style.display = 'block';
         }
 
@@ -720,19 +972,8 @@
             document.getElementById('sessionInfo').style.display = 'none';
         }
 
-        // Show credentials
-        function hideCredentials() {
-            document.getElementById('credentials').style.display = 'none';
-        }
-
-        // Show loading
-        function showLoading(show) {
-            document.getElementById('loading').style.display = show ? 'block' : 'none';
-            document.getElementById('connectBtn').disabled = show;
-        }
-
         // Show status message
-        function showStatus(message, type = 'info') {
+        function showStatus(message, type) {
             const statusEl = document.getElementById('status');
             statusEl.textContent = message;
             statusEl.className = `status ${type}`;
@@ -746,9 +987,19 @@
             }
         }
 
-        // Hide status message
+        // Hide status
         function hideStatus() {
             document.getElementById('status').style.display = 'none';
+        }
+
+        // Show loading
+        function showLoading(show) {
+            document.getElementById('loading').style.display = show ? 'block' : 'none';
+        }
+
+        // Hide credentials
+        function hideCredentials() {
+            document.getElementById('credentials').style.display = 'none';
         }
 
         // Clean up intervals on page unload
@@ -756,13 +1007,30 @@
             if (statusInterval) {
                 clearInterval(statusInterval);
             }
-            if (countdownInterval) {
-                clearInterval(countdownInterval);
+            if (qrCountdownInterval) {
+                clearInterval(qrCountdownInterval);
+            }
+            if (pairingCountdownInterval) {
+                clearInterval(pairingCountdownInterval);
             }
         });
 
-        // Auto-focus phone number input
-        document.getElementById('phoneNumber').focus();
+        // Initialize page
+        document.addEventListener('DOMContentLoaded', () => {
+            console.log('WhatsApp Connection App loaded');
+            
+            // Focus on phone number input
+            document.getElementById('phoneNumber').focus();
+            
+            // Add phone number formatting
+            document.getElementById('phoneNumber').addEventListener('input', (e) => {
+                let value = e.target.value.replace(/\D/g, '');
+                if (value && !value.startsWith('+')) {
+                    value = '+' + value;
+                }
+                e.target.value = value;
+            });
+        });
     </script>
 </body>
 </html>
