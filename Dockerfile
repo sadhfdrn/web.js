@@ -1,23 +1,26 @@
-# ✅ Use prebuilt Firefox headless image with GeckoDriver
+# ✅ Use Firefox + GeckoDriver headless image
 FROM prantlf/geckodriver-headless:latest
+
+# ✅ Install Node.js + npm (LTS version)
+RUN apk add --no-cache nodejs npm
 
 # ✅ Set working directory
 WORKDIR /app
 
-# ✅ Copy your local files into the container
+# ✅ Copy project files
 COPY . .
 
-# ✅ Install production dependencies cleanly
+# ✅ Install only production dependencies
 RUN npm ci --omit=dev
 
-# ✅ Set Firefox as the executable path (spoofing Chrome if needed)
+# ✅ Set Firefox path (used by Puppeteer or Playwright)
 ENV CHROME_EXECUTABLE_PATH=/usr/bin/firefox
 
-# ✅ Optional: set Node environment to production
+# ✅ Set Node environment
 ENV NODE_ENV=production
 
-# ✅ Expose app port (used by Express, Puppeteer status, etc.)
+# ✅ Expose application port
 EXPOSE 3000
 
-# ✅ Start your WPPConnect bot
+# ✅ Run the bot
 CMD ["node", "index.js"]
