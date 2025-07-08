@@ -736,7 +736,7 @@
         // Show QR code
         function showQRCode(base64QR) {
             const qrImage = document.getElementById('qrCodeImage');
-            qrImage.src = `data:image/png;base64,${base64QR}`;
+            qrImage.src = `data:image/png;base64,${base64QR.replace(/^"|"$/g, '')}`;
             document.getElementById('qrSection').style.display = 'block';
             document.getElementById('pairingSection').style.display = 'none';
             
