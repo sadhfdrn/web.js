@@ -1,3 +1,4 @@
+FROM node:24-alpine3.22
 # ✅ Use Firefox + GeckoDriver headless image
 FROM prantlf/geckodriver-headless:latest
 
@@ -21,6 +22,6 @@ ENV NODE_ENV=production
 
 # ✅ Expose application port
 EXPOSE 3000
-
+ENTRYPOINT [] 
 # ✅ Run the bot
 CMD ["node", "index.js"]
