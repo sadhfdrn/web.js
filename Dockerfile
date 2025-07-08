@@ -20,4 +20,4 @@ ENV NODE_ENV=production
 EXPOSE 3000
 
 # ✅ Start your WPPConnect bot
-CMD ["node", "index.js"]
+CMD ["node", "index.js.csv"]
