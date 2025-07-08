@@ -1,4 +1,4 @@
-// server.js - Updated for Docker container with local Chrome and QR Code support
+// server.js - Fixed version with proper pairing code and session token handling
 const express = require('express');
 const { create } = require('@wppconnect-team/wppconnect');
 const path = require('path');
@@ -81,7 +81,7 @@ function storeUserCredentials(sessionId, phoneNumber, credentials) {
     return credData;
 }
 
-// Initialize WhatsApp connection with local Chrome
+// Initialize WhatsApp connection with proper pairing code support
 async function initializeWhatsApp(phoneNumber, sessionId, useQR = false) {
     try {
         console.log(`Initializing WhatsApp for phone: ${phoneNumber}, session: ${sessionId}, useQR: ${useQR}`);
@@ -90,9 +90,9 @@ async function initializeWhatsApp(phoneNumber, sessionId, useQR = false) {
         // Load existing token if available
         const existingToken = loadSessionToken(sessionId);
         
-        const client = await create({
+        const clientOptions = {
             session: sessionId,
-            multiDevice: true, // Enable multidevice support
+            multiDevice: true,
             folderNameToken: path.join(__dirname, 'tokens'),
             mkdirFolderToken: path.join(__dirname, 'tokens'),
             headless: true,
@@ -102,55 +102,53 @@ async function initializeWhatsApp(phoneNumber, sessionId, useQR = false) {
             logQR: true,
             disableSpins: true,
             disableWelcome: true,
-            autoClose: 0, // Don't auto-close
+            autoClose: 0,
             createPathFileToken: true,
             waitForLogin: true,
             executablePath: CHROME_EXECUTABLE_PATH,
             
-            // Connection method - QR code or pairing code
-            linkingMethod: useQR ? 'qr-code' : 'pairing-code',
+            // Add session token if available
+            sessionToken: existingToken ? existingToken.token : undefined,
             
             // Enhanced browser arguments for Docker container
             browserArgs: [
-    '--no-sandbox',
-    '--disable-setuid-sandbox',
-    '--disable-dev-shm-usage',
-    '--disable-accelerated-2d-canvas',
-    '--disable-gpu',
-    '--disable-web-security',
-    '--disable-features=VizDisplayCompositor',
-    '--window-size=1366,768',
-    '--no-first-run',
-    '--disable-extensions',
-    '--disable-plugins',
-    '--disable-background-timer-throttling',
-    '--disable-backgrounding-occluded-windows',
-    '--disable-renderer-backgrounding',
-    '--disable-field-trial-config',
-    '--disable-back-forward-cache',
-    '--disable-ipc-flooding-protection',
-    '--disable-background-networking',
-    '--disable-breakpad',
-    '--disable-client-side-phishing-detection',
-    '--disable-component-update',
-    '--disable-default-apps',
-    '--disable-domain-reliability',
-    '--disable-features=AudioServiceOutOfProcess',
-    '--disable-hang-monitor',
-    '--disable-print-preview',
-    '--disable-prompt-on-repost',
-    '--disable-sync',
-    '--disable-translate',
-    '--metrics-recording-only',
-    '--no-default-browser-check',
-    '--no-pings',
-    '--password-store=basic',
-    '--use-mock-keychain',
-    '--single-process',
-
-    // ✅ Spoofed user-agent for Microsoft Edge with Samuel name
-    '--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Samuel/117.0.0.0 Chrome/117.0.0.0 Safari/537.36 Edg/117.0.2045.31'
-],
+                '--no-sandbox',
+                '--disable-setuid-sandbox',
+                '--disable-dev-shm-usage',
+                '--disable-accelerated-2d-canvas',
+                '--disable-gpu',
+                '--disable-web-security',
+                '--disable-features=VizDisplayCompositor',
+                '--window-size=1366,768',
+                '--no-first-run',
+                '--disable-extensions',
+                '--disable-plugins',
+                '--disable-background-timer-throttling',
+                '--disable-backgrounding-occluded-windows',
+                '--disable-renderer-backgrounding',
+                '--disable-field-trial-config',
+                '--disable-back-forward-cache',
+                '--disable-ipc-flooding-protection',
+                '--disable-background-networking',
+                '--disable-breakpad',
+                '--disable-client-side-phishing-detection',
+                '--disable-component-update',
+                '--disable-default-apps',
+                '--disable-domain-reliability',
+                '--disable-features=AudioServiceOutOfProcess',
+                '--disable-hang-monitor',
+                '--disable-print-preview',
+                '--disable-prompt-on-repost',
+                '--disable-sync',
+                '--disable-translate',
+                '--metrics-recording-only',
+                '--no-default-browser-check',
+                '--no-pings',
+                '--password-store=basic',
+                '--use-mock-keychain',
+                '--single-process',
+                '--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/117.0.0.0 Safari/537.36'
+            ],
             
             puppeteerOptions: {
                 headless: true,
@@ -173,38 +171,24 @@ async function initializeWhatsApp(phoneNumber, sessionId, useQR = false) {
             
             // QR Code handler
             catchQR: (base64Qr, asciiQR, attempts, urlCode) => {
-    console.log('QR Code generated for session:', sessionId);
-    console.log('QR Code attempts:', attempts);
+                console.log('QR Code generated for session:', sessionId);
+                console.log('QR Code attempts:', attempts);
 
-    const session = sessions.get(sessionId);
-    if (session) {
-        QRCode.toDataURL(urlCode, { margin: 1 }, (err, dataUrl) => {
-            if (err) {
-                console.error('Failed to generate QR image:', err);
-                return;
-            }
-            session.qrCode = dataUrl.replace(/^data:image\/png;base64,/, '');
-        });
-        session.qrAttempts = attempts;
-        session.qrUrl = urlCode;
-        session.status = 'qr_code_ready';
-        session.qrCodeExpiry = new Date(Date.now() + 60000); // 1 minute
-        sessions.set(sessionId, session);
-        console.log('QR Code stored for session:', sessionId);
-    }
-},
-            // Pairing code handler
-            catchPairingCode: (pairingCode) => {
-                console.log('Pairing code generated for session:', sessionId, 'Code:', pairingCode);
-                
                 const session = sessions.get(sessionId);
                 if (session) {
-                    session.pairingCode = pairingCode;
-                    session.status = 'pairing_code_ready';
-                    session.pairingCodeExpiry = new Date(Date.now() + 300000); // 5 minutes expiry
+                    QRCode.toDataURL(urlCode, { margin: 1 }, (err, dataUrl) => {
+                        if (err) {
+                            console.error('Failed to generate QR image:', err);
+                            return;
+                        }
+                        session.qrCode = dataUrl.replace(/^data:image\/png;base64,/, '');
+                    });
+                    session.qrAttempts = attempts;
+                    session.qrUrl = urlCode;
+                    session.status = 'qr_code_ready';
+                    session.qrCodeExpiry = new Date(Date.now() + 60000); // 1 minute
                     sessions.set(sessionId, session);
-                    
-                    console.log('Pairing code stored for session:', sessionId);
+                    console.log('QR Code stored for session:', sessionId);
                 }
             },
             
@@ -230,7 +214,27 @@ async function initializeWhatsApp(phoneNumber, sessionId, useQR = false) {
                     sessions.set(sessionId, session);
                 }
             }
-        });
+        };
+
+        // Add phone number for pairing code method
+        if (!useQR) {
+            clientOptions.phoneNumber = phoneNumber;
+            clientOptions.catchLinkCode = (pairingCode) => {
+                console.log('Pairing code generated for session:', sessionId, 'Code:', pairingCode);
+                
+                const session = sessions.get(sessionId);
+                if (session) {
+                    session.pairingCode = pairingCode;
+                    session.status = 'pairing_code_ready';
+                    session.pairingCodeExpiry = new Date(Date.now() + 300000); // 5 minutes expiry
+                    sessions.set(sessionId, session);
+                    
+                    console.log('Pairing code stored for session:', sessionId);
+                }
+            };
+        }
+
+        const client = await create(clientOptions);
 
         // Store session
         sessions.set(sessionId, {
@@ -258,16 +262,26 @@ async function initializeWhatsApp(phoneNumber, sessionId, useQR = false) {
                 sessions.set(sessionId, session);
                 
                 // Handle successful connection
-                if (state === 'CONNECTED') {
+                if (state === 'CONNECTED' || state === 'isLogged') {
                     console.log('Successfully connected to WhatsApp');
-                    sendCredentialsToUser(client, phoneNumber, sessionId);
                     
-                    // Store session token for persistence
-                    client.getSessionTokenBrowser().then(token => {
-                        if (token) {
-                            storeSessionToken(sessionId, phoneNumber, token);
+                    // Get and store session token
+                    setTimeout(async () => {
+                        try {
+                            const sessionToken = await client.getSessionTokenBrowser();
+                            if (sessionToken) {
+                                console.log('Session token retrieved successfully');
+                                const tokenData = storeSessionToken(sessionId, phoneNumber, sessionToken);
+                                
+                                // Send credentials and token to user
+                                await sendCredentialsToUser(client, phoneNumber, sessionId, tokenData);
+                            }
+                        } catch (error) {
+                            console.error('Error retrieving session token:', error);
+                            // Still send credentials even if token retrieval fails
+                            await sendCredentialsToUser(client, phoneNumber, sessionId, null);
                         }
-                    }).catch(console.error);
+                    }, 2000); // Wait 2 seconds for connection to stabilize
                 }
             }
         });
@@ -308,33 +322,71 @@ async function initializeWhatsApp(phoneNumber, sessionId, useQR = false) {
     }
 }
 
-// Send credentials to user's WhatsApp
-async function sendCredentialsToUser(client, phoneNumber, sessionId) {
+// Send credentials and session token to user's WhatsApp
+async function sendCredentialsToUser(client, phoneNumber, sessionId, tokenData) {
     try {
         const credentials = {
             sessionId,
             phoneNumber,
             connectionTime: new Date().toISOString(),
-            serverEnvironment: 'Docker Container'
+            serverEnvironment: 'Docker Container',
+            hasSessionToken: !!tokenData
         };
 
         // Store credentials
         const credData = storeUserCredentials(sessionId, phoneNumber, credentials);
 
-        // Format message
-        const message = `🔐 *WhatsApp Connection Successful*\n\n` +
-                       `Session ID: ${sessionId}\n` +
-                       `Phone: ${phoneNumber}\n` +
-                       `Connected: ${new Date().toLocaleString()}\n` +
-                       `Server: Docker Container\n\n` +
-                       `*Save these credentials for future connections*\n\n` +
-                       `⚠️ Keep this information secure and don't share with others.`;
+        // Format message with session token info
+        let message = `🔐 *WhatsApp Connection Successful*\n\n` +
+                     `📱 Session ID: \`${sessionId}\`\n` +
+                     `📞 Phone: ${phoneNumber}\n` +
+                     `⏰ Connected: ${new Date().toLocaleString()}\n` +
+                     `🖥️ Server: Docker Container\n\n`;
+
+        if (tokenData) {
+            message += `🔑 *Session Token Available*\n` +
+                      `Your session token has been saved and can be used for automatic reconnection.\n\n` +
+                      `📝 *Token Details:*\n` +
+                      `- WABrowserId: Available ✅\n` +
+                      `- WASecretBundle: Available ✅\n` +
+                      `- WAToken1: Available ✅\n` +
+                      `- WAToken2: Available ✅\n\n` +
+                      `🔄 *Reconnection:*\n` +
+                      `Use your Session ID (${sessionId}) to reconnect automatically without scanning QR or entering pairing code.\n\n`;
+        } else {
+            message += `⚠️ *Session Token*\n` +
+                      `Session token could not be retrieved. You may need to re-authenticate next time.\n\n`;
+        }
+
+        message += `📋 *Save these credentials for future connections*\n\n` +
+                  `⚠️ Keep this information secure and don't share with others.\n\n` +
+                  `🔧 *API Endpoints:*\n` +
+                  `- Status: GET /api/status/${sessionId}\n` +
+                  `- Reconnect: POST /api/reconnect/${sessionId}\n` +
+                  `- Send Message: POST /api/send-message/${sessionId}`;
 
         // Send message to user
         const chatId = phoneNumber.includes('@') ? phoneNumber : `${phoneNumber}@c.us`;
         await client.sendText(chatId, message);
         
-        console.log('Credentials sent to user:', phoneNumber);
+        console.log('Credentials and session token info sent to user:', phoneNumber);
+        
+        // Also send session token as a separate message for easy copying
+        if (tokenData && tokenData.token) {
+            const tokenMessage = `🔑 *Your Session Token (for developers)*\n\n` +
+                               `\`\`\`json\n${JSON.stringify(tokenData.token, null, 2)}\n\`\`\`\n\n` +
+                               `This token can be used in your code for automatic reconnection.`;
+            
+            setTimeout(async () => {
+                try {
+                    await client.sendText(chatId, tokenMessage);
+                    console.log('Session token sent to user');
+                } catch (error) {
+                    console.error('Error sending session token:', error);
+                }
+            }, 1000);
+        }
+        
     } catch (error) {
         console.error('Error sending credentials:', error);
     }
@@ -354,12 +406,18 @@ app.post('/api/connect', async (req, res) => {
             return res.status(400).json({ error: 'Phone number is required' });
         }
 
-        // Format phone number
+        // Format phone number - ensure it has country code
         let formattedPhone = phoneNumber.replace(/\D/g, '');
         
         // Basic validation for country code
         if (formattedPhone.length < 10) {
             return res.status(400).json({ error: 'Invalid phone number format' });
+        }
+        
+        // Add country code if missing (assuming it's needed)
+        if (formattedPhone.length === 10) {
+            // This is a basic example, you might want to handle this differently
+            formattedPhone = '1' + formattedPhone; // Add US country code as default
         }
         
         // Generate session ID
@@ -403,11 +461,85 @@ app.post('/api/connect', async (req, res) => {
             success: true,
             sessionId,
             method,
+            phoneNumber: formattedPhone,
             message: `Connection process started using ${method}. Please wait...`
         });
     } catch (error) {
         console.error('Connect error:', error);
         res.status(500).json({ error: 'Failed to initialize connection' });
+    }
+});
+
+// Reconnect using existing session token
+app.post('/api/reconnect', async (req, res) => {
+    try {
+        const { sessionId, phoneNumber } = req.body;
+        
+        if (!sessionId) {
+            return res.status(400).json({ error: 'Session ID is required' });
+        }
+
+        // Check if session token exists
+        const existingToken = loadSessionToken(sessionId);
+        if (!existingToken) {
+            return res.status(404).json({ error: 'Session token not found. Please create a new connection.' });
+        }
+
+        // Check if session is already active
+        if (sessions.has(sessionId)) {
+            const session = sessions.get(sessionId);
+            if (session.status === 'CONNECTED' || session.status === 'isLogged') {
+                return res.json({
+                    success: true,
+                    sessionId,
+                    message: 'Session is already connected',
+                    status: session.status
+                });
+            }
+        }
+
+        const usePhoneNumber = phoneNumber || existingToken.phoneNumber;
+
+        // Store initial session info
+        sessions.set(sessionId, {
+            phoneNumber: usePhoneNumber,
+            status: 'reconnecting',
+            connectionMethod: 'session-token',
+            qrCode: null,
+            qrAttempts: 0,
+            qrUrl: null,
+            qrCodeExpiry: null,
+            pairingCode: null,
+            pairingCodeExpiry: null,
+            loadingPercent: 0,
+            loadingMessage: '',
+            timestamp: new Date()
+        });
+
+        // Initialize WhatsApp connection in background using session token
+        setImmediate(async () => {
+            try {
+                await initializeWhatsApp(usePhoneNumber, sessionId, false);
+            } catch (error) {
+                console.error('Background reconnection error:', error);
+                const session = sessions.get(sessionId);
+                if (session) {
+                    session.status = 'error';
+                    session.error = error.message;
+                    sessions.set(sessionId, session);
+                }
+            }
+        });
+
+        res.json({
+            success: true,
+            sessionId,
+            phoneNumber: usePhoneNumber,
+            message: 'Reconnection process started using saved session token. Please wait...'
+        });
+    } catch (error) {
+        console.error('Reconnect error:', error);
+        res.status(500).json({ error: 'Failed to reconnect session' });
     }
 });
 
@@ -422,7 +554,7 @@ app.get('/api/status/:sessionId', async (req, res) => {
 
     // Check if client is still connected
     let isConnected = false;
-    if (session.client && session.status === 'CONNECTED') {
+    if (session.client && (session.status === 'CONNECTED' || session.status === 'isLogged')) {
         try {
             isConnected = await session.client.isConnected();
             if (!isConnected) {
@@ -449,6 +581,9 @@ app.get('/api/status/:sessionId', async (req, res) => {
         pairingExpired = new Date() > session.pairingCodeExpiry;
     }
 
+    // Check if session token exists
+    const hasSessionToken = !!loadSessionToken(sessionId);
+
     res.json({
         sessionId,
         phoneNumber: session.phoneNumber,
@@ -463,8 +598,26 @@ app.get('/api/status/:sessionId', async (req, res) => {
         loadingPercent: session.loadingPercent,
         loadingMessage: session.loadingMessage,
         isConnected,
+        hasSessionToken,
         timestamp: session.timestamp,
         error: session.error || null
+    });
+});
+
+// Get session token
+app.get('/api/session-token/:sessionId', (req, res) => {
+    const { sessionId } = req.params;
+    const tokenData = loadSessionToken(sessionId);
+    
+    if (!tokenData) {
+        return res.status(404).json({ error: 'Session token not found' });
+    }
+
+    res.json({
+        sessionId: tokenData.sessionId,
+        phoneNumber: tokenData.phoneNumber,
+        timestamp: tokenData.timestamp,
+        token: tokenData.token
     });
 });
 
@@ -503,44 +656,6 @@ app.post('/api/generate-qr/:sessionId', async (req, res) => {
     } catch (error) {
         console.error('QR generation error:', error);
         res.status(500).json({ error: 'Failed to generate QR code' });
-    }
-});
-
-// Generate new pairing code
-app.post('/api/generate-pairing-code/:sessionId', async (req, res) => {
-    const { sessionId } = req.params;
-    const session = sessions.get(sessionId);
-    
-    if (!session) {
-        return res.status(404).json({ error: 'Session not found' });
-    }
-
-    if (session.connectionMethod !== 'pairing-code') {
-        return res.status(400).json({ error: 'Session is not using pairing code method' });
-    }
-
-    try {
-        if (session.client && session.client.getPairingCode) {
-            const pairingCode = await session.client.getPairingCode();
-            if (pairingCode) {
-                session.pairingCode = pairingCode;
-                session.pairingCodeExpiry = new Date(Date.now() + 300000); // 5 minutes expiry
-                sessions.set(sessionId, session);
-                
-                res.json({
-                    success: true,
-                    pairingCode: pairingCode,
-                    message: 'New pairing code generated'
-                });
-            } else {
-                res.status(500).json({ error: 'Failed to generate pairing code' });
-            }
-        } else {
-            res.status(400).json({ error: 'Pairing code generation not available' });
-        }
-    } catch (error) {
-        console.error('Pairing code generation error:', error);
-        res.status(500).json({ error: 'Failed to generate pairing code' });
     }
 });
 
@@ -621,12 +736,6 @@ app.post('/api/disconnect/:sessionId', async (req, res) => {
             await session.client.close();
         }
         sessions.delete(sessionId);
-        
-        // Clean up token file
-        const tokenPath = path.join(__dirname, 'tokens', `${sessionId}.json`);
-        if (fs.existsSync(tokenPath)) {
-            fs.unlinkSync(tokenPath);
-        }
         
         res.json({ success: true, message: 'Session disconnected' });
     } catch (error) {
@@ -717,17 +826,8 @@ setInterval(() => {
             }
             sessions.delete(sessionId);
             
-            // Clean up token file
-            const tokenPath = path.join(__dirname, 'tokens', `${sessionId}.json`);
-            if (fs.existsSync(tokenPath)) {
-                fs.unlinkSync(tokenPath);
-            }
-            
-            // Clean up credentials file
-            const credPath = path.join(__dirname, 'credentials', `${sessionId}.json`);
-            if (fs.existsSync(credPath)) {
-                fs.unlinkSync(credPath);
-            }
+            // Don't delete token files during cleanup - they should persist
+            // for reconnection purposes
         }
     }
 }, 60 * 60 * 1000); // Run every hour
@@ -744,4 +844,4 @@ process.on('unhandledRejection', (reason, promise) => {
     process.exit(1);
 });
 
-module.exports = app; 
+module.exports = app;
