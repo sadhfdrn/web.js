@@ -1,4 +1,4 @@
-FROM mcr.microsoft.com/msedge/msedgedriver
+FROM browserless/chrome:latest
 # ✅ Install Node.js + npm (LTS version)
 
 # ✅ Set working directory
